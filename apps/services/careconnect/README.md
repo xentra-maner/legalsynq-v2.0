@@ -13,9 +13,8 @@ Healthcare provider directory, referral management, and appointment scheduling.
 - Attachment management for referrals and appointments
 - Referral and appointment notes
 - Notification delivery on key lifecycle events
-- Configurable Referral Attribution (referral-source tracking) and the restricted,
-  read-only Referral Representative Portal (see "Referral Attribution & Referral
-  Representative Portal" below)
+- Configurable Referral Attribution (referral-source tracking) and the anonymous
+  Referral Portal (see "Referral Attribution & Referral Portal" below)
 
 ## Layer Structure
 
@@ -49,19 +48,24 @@ CareConnect.Tests/         Tests
 | `GET` | `/api/careconnect/appointments` | Bearer | List appointments |
 | `GET` | `/api/referral-attributions/options` | Bearer | Active Referral Attribution options for the caller's tenant (Law Firm Portal dropdown) |
 | `GET`/`POST`/`PATCH` | `/api/referral-attributions` | PlatformOrTenantAdmin | Tenant admin CRUD for Referral Attribution options |
-| `POST`/`PATCH`/`DELETE` | `/api/referral-representative-access-codes` | PlatformOrTenantAdmin | Tenant admin: generate/revoke a representative access code (no user selection) |
+| `POST`/`PATCH`/`DELETE` | `/api/referral-representative-access-codes` | PlatformOrTenantAdmin | Tenant admin: generate/revoke a referral portal access code (no user selection) |
 | `GET` | `/api/referral-representative-access-codes/by-attribution/{id}` | PlatformOrTenantAdmin | The single active code for one attribution, or 204 if none — exactly one active code per attribution is allowed |
-| `POST` | `/api/public/representative/verify` | Anonymous | Representative Portal — stateless access-code check, returns the named attribution |
-| `GET` | `/api/public/representative/referrals` | Anonymous (`?code=`) | Representative Portal — paginated referral list, code re-verified per request |
-| `GET` | `/api/public/representative/referrals/{id}` | Anonymous (`?code=`) | Representative Portal — restricted referral detail |
-| `GET` | `/api/public/representative/referral-metrics` | Anonymous (`?code=`) | Representative Portal — dashboard metrics |
+| `POST` | `/api/public/referral-portal/verify` | Anonymous | Referral Portal — stateless access-code check, returns the named attribution |
+| `GET` | `/api/public/referral-portal/referrals` | Anonymous (`?code=`) | Referral Portal — paginated converted referral list, code re-verified per request |
+| `GET` | `/api/public/referral-portal/referrals/{id}` | Anonymous (`?code=`) | Referral Portal — restricted converted referral detail |
+| `GET` | `/api/public/referral-portal/referral-metrics` | Anonymous (`?code=`) | Referral Portal — dashboard metrics |
+| `GET` | `/api/public/referral-portal/law-firms` | Anonymous (`?code=`) | Referral Portal — law firm selector options |
+| `GET` | `/api/public/referral-portal/providers` | Anonymous (`?code=`) | Referral Portal — verified master provider list for recommendations |
+| `GET` | `/api/public/referral-portal/providers/map` | Anonymous (`?code=`) | Referral Portal — verified provider map markers for recommendations |
+| `POST` | `/api/public/referral-portal/pending-referrals` | Anonymous (`?code=`) | Referral Portal — submit a pending referral request to a law firm |
+| `GET`/`POST` | `/api/pending-referral-requests` | CARECONNECT_REFERRER | Law firm review queue and conversion endpoint |
 | `POST` | `/api/careconnect/appointments` | Bearer | Book appointment |
 | `GET` | `/api/public/careconnect/network` | Anonymous | Public provider network |
 | `PUT` | `/api/networks/{networkId}/providers/{providerId}` | Bearer | Edit a provider from a tenant network after membership validation |
 | `DELETE` | `/api/networks/{networkId}/providers/{id}` | Bearer | Soft-delete a provider-location network membership |
 | `POST` | `/api/networks/{networkId}/providers/import` | Anonymous, loopback-only | CSV/XLSX provider migration/import into a tenant network |
 
-### Referral Attribution & Referral Representative Portal
+### Referral Attribution & Referral Portal
 
 `ReferralAttribution` (`cc_ReferralAttributions`) is a tenant-scoped, configurable label for who or
 what originated a referral (a representative, a campaign, a partner) — set on `referrals.ReferralAttributionId`
@@ -71,13 +75,13 @@ once set, is immutable — set exactly once, at submission time
 admin edit path for it; the admin referral view shows it read-only alongside the rest of the
 referral's details.
 
-`ReferralAttributionAccessCode` (`cc_ReferralAttributionAccessCodes`) grants read-only representative
+`ReferralAttributionAccessCode` (`cc_ReferralAttributionAccessCodes`) grants referral portal
 access via a generated code, not admin-typed user linking and not a login. A tenant admin generates a
 code scoped to one attribution (optionally bounded by `AccessStartAtUtc`/`AccessEndAtUtc`) and shares
 it with the intended representative out of band; the code is revealed once, in the generate response,
 and hashed (SHA-256 + `ReferralAttributionAccessCode:Pepper`) at rest — the plaintext is never
-persisted. There is no "redeemer" and nothing is stamped when a code is used: the Representative Portal
-is fully anonymous, and the representative simply presents the raw code on every request. The backend
+persisted. There is no "redeemer" and nothing is stamped when a code is used: the Referral Portal
+is fully anonymous, and the associate simply presents the raw code on every request. The backend
 re-verifies it from scratch each time (`IReferralAttributionAccessCodeService.VerifyAsync`,
 stateless — no mutation), so a revoked code or a deactivated attribution takes effect on the very next
 request, not on next login (there is no login).
@@ -98,7 +102,7 @@ without a new code.
 
 There is no product role, no login, and no platform session anywhere on this surface — the access
 code is the sole credential, checked on every single request. `PublicRepresentativeEndpoints`
-(`/api/public/representative/*`) is modeled directly on `PublicNetworkEndpoints`' anonymous pattern:
+(`/api/public/referral-portal/*`, with `/api/public/representative/*` retained temporarily as a compatibility alias) is modeled directly on `PublicNetworkEndpoints`' anonymous pattern:
 `.AllowAnonymous()`, rate-limited, and gated by the same two-layer trust boundary (gateway-secret +
 HMAC-signed tenant ID) that the public provider directory uses — see `PublicTrustBoundary`
 (`CareConnect.Api/Helpers/PublicTrustBoundary.cs`), extracted from `PublicNetworkEndpoints` so both
@@ -108,10 +112,11 @@ whether a code was ever verified — referral data is PII (client name, DOB, pho
 representative read re-verifies the caller's code server-side on every single call. Nothing is cached
 and nothing is trusted from a prior request.
 
-The frontend lives at `apps/web/src/app/careconnect/representative/` (`/careconnect/representative/*`
-— a top-level sibling of `apps/web/src/app/careconnect/network/`, not under `app/(platform)/careconnect/`,
+The frontend lives at `apps/web/src/app/careconnect/referral/` (`/careconnect/referral/*`;
+`/careconnect/representative/*` redirects to it temporarily) — a top-level sibling of
+`apps/web/src/app/careconnect/network/`, not under `app/(platform)/careconnect/`,
 so it never inherits that route group's login-gated layout; structurally isolated from the admin shell —
-it does not import `AppShell`/`PRODUCT_NAV`). It resolves the tenant from the request subdomain the
+it does not import `AppShell`/`PRODUCT_NAV`. It resolves the tenant from the request subdomain the
 same way `/careconnect/network` does, and gates its pages behind `RepresentativeAccessCodeGate`
 (`apps/web/src/components/careconnect/representative-access-code-gate.tsx`), which persists the raw
 code client-side (not just an "unlocked" flag) and resends it on every data call via
@@ -138,6 +143,27 @@ a tenant capability on the platform's existing capability store
 (`careconnect.referral_representative_portal`, read via
 `GET /api/v1/public/tenants/{tenantId}/capabilities/{capabilityKey}` on the Tenant service), disabled
 by default.
+
+Referral Portal submissions create `cc_PendingReferralRequests` rows instead of immediately creating
+`cc_Referrals`. The pending request stores the selected law firm organization, locked access-code
+attribution, immutable `Origin = ReferralAssociate`, patient/referral details, lien company name/email,
+zero or more preferred medical provider/location recommendations, and review status (`PendingReview`,
+`Converted`, `Cancelled`). Preferred providers are advisory only: selecting them from the Referral
+Portal's master provider list/map does not create a referral, does not notify any provider, and does
+not bypass law-firm review. The portal persists ordered preferences in
+`cc_PendingReferralProviderPreferences`; the legacy `RecommendedProvider*` columns mirror the first
+preference for backward compatibility/default routing. Authenticated law-firm users with
+`CARECONNECT_REFERRER` list their own organization's pending requests, review all stored preferences,
+and convert one by selecting the final provider; conversion creates a normal referral, preserves
+attribution/origin/lien-company fields, and blocks repeat conversion. If the law firm converts without
+selecting a different provider, the first stored preference can be used as the default conversion
+target.
+
+Normal referrals now include immutable `Origin` (`LawFirm` for direct law-firm submissions and
+`ReferralAssociate` for converted pending requests) plus optional `LienCompanyName` and
+`LienCompanyEmail`. Provider network memberships include `OwningOrganizationId` and `Visibility`
+(`Private` or `Public`); non-admin-created entries default to private, and only tenant/platform admins
+may make a provider public.
 
 ### Provider specialties
 

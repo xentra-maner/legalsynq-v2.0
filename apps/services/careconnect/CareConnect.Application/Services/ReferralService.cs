@@ -243,7 +243,10 @@ public class ReferralService : IReferralService
             treatmentTypeId: request.TreatmentTypeId,
             dateOfAccident: request.DateOfAccident,
             facilityId: request.FacilityId,
-            referralAttributionId: validatedAttributionId);
+            referralAttributionId: validatedAttributionId,
+            origin: ReferralOrigin.LawFirm,
+            lienCompanyName: request.LienCompanyName,
+            lienCompanyEmail: request.LienCompanyEmail);
 
         await _referrals.AddAsync(referral, ct);
 
@@ -1438,6 +1441,10 @@ public class ReferralService : IReferralService
             !Regex.IsMatch(r.ClientEmail.Trim(), @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
             errors["clientEmail"] = new[] { "ClientEmail format is invalid." };
 
+        if (!string.IsNullOrWhiteSpace(r.LienCompanyEmail) &&
+            !Regex.IsMatch(r.LienCompanyEmail.Trim(), @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
+            errors["lienCompanyEmail"] = new[] { "LienCompanyEmail format is invalid." };
+
         if (!Referral.ValidUrgencies.All.Contains(r.Urgency))
             errors["urgency"] = new[] { $"Urgency must be one of: {string.Join(", ", Referral.ValidUrgencies.All)}." };
 
@@ -1485,6 +1492,9 @@ public class ReferralService : IReferralService
             Status = r.Status,
             Notes = r.Notes,
             DeclineNotes = r.DeclineNotes,
+            Origin = r.Origin,
+            LienCompanyName = r.LienCompanyName,
+            LienCompanyEmail = r.LienCompanyEmail,
             DateOfAccident = r.DateOfAccident?.ToString("yyyy-MM-dd"),
             CreatedAtUtc = r.CreatedAtUtc,
             UpdatedAtUtc = r.UpdatedAtUtc,

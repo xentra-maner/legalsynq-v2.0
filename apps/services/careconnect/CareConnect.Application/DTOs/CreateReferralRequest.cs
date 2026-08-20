@@ -22,6 +22,8 @@ public class CreateReferralRequest
     public Guid? TreatmentTypeId { get; set; }
     public DateOnly? DateOfAccident { get; set; }
     public string? Notes { get; set; }
+    public string? LienCompanyName { get; set; }
+    public string? LienCompanyEmail { get; set; }
 
     /// <summary>
     /// Optional Referral Attribution — who or what originated this referral. Blank/null by

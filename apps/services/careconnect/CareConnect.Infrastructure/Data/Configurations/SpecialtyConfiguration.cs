@@ -8,6 +8,7 @@ public class SpecialtyConfiguration : IEntityTypeConfiguration<Specialty>
 {
     public static readonly Guid PainId            = new("41000000-0000-0000-0000-000000000001");
     public static readonly Guid ChiropractorId    = new("41000000-0000-0000-0000-000000000002");
+    public static readonly Guid OtherId            = new("41000000-0000-0000-0000-000000000010");
     public static readonly Guid PhysicalTherapyId  = new("41000000-0000-0000-0000-000000000004");
     public static readonly Guid ImagingId          = new("41000000-0000-0000-0000-000000000005");
     public static readonly Guid NeuroId           = new("41000000-0000-0000-0000-000000000006");
@@ -40,7 +41,8 @@ public class SpecialtyConfiguration : IEntityTypeConfiguration<Specialty>
             CreateSpecialty(PhysicalTherapyId, "Physical Therapy", "PHYSICAL_THERAPY", null, true),
             CreateSpecialty(NeuroId, "Neuro", "NEURO", null, true),
             CreateSpecialty(ImagingId, "Imaging", "IMAGING", null, true),
-            CreateSpecialty(ChiropractorId, "Chiropractor", "CHIROPRACTOR", null, true)
+            CreateSpecialty(ChiropractorId, "Chiropractor", "CHIROPRACTOR", null, true),
+            CreateSpecialty(OtherId, "Other", "OTHER", null, true)
         );
     }
 

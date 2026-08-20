@@ -24,6 +24,13 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
           icon: "ri-file-list-3-line",
           badgeKey: "newReferrals",
         },
+        {
+          href: "/careconnect/pending-requests",
+          label: "Pending Requests",
+          icon: "ri-inbox-unarchive-line",
+          requiredRoles: [ProductRole.CareConnectReferrer],
+          hiddenForOrgTypes: [OrgType.Provider, OrgType.LienOwner],
+        },
         // CC-REFERRER-BROWSE: for elevated law firm referrers (tenant portal).
         // Hidden from network managers AND from lien-owner orgs (they manage their
         // own network; they never browse other networks).

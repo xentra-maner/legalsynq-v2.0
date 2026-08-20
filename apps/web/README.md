@@ -83,6 +83,15 @@ src/
 | `TenantAdmin` | Tenant user/group/permission management |
 | `PlatformAdmin` | All tenants + platform admin |
 
+### CareConnect Referral Portal
+
+`/careconnect/referral/*` is the anonymous, access-code Referral Portal for referral associates.
+`/careconnect/representative/*` redirects there temporarily for compatibility. `/careconnect/referral/submit`
+submits pending referral requests to a selected law firm; `/careconnect/pending-requests` is the
+authenticated law-firm review queue where `CARECONNECT_REFERRER` users select a provider and convert
+pending requests into normal referrals. Authenticated and public referral submission forms include optional
+lien company name/email fields, and referral detail surfaces display the immutable origin and lien company data.
+
 ## Environment
 
 `apps/web/.env.local` (gitignored):

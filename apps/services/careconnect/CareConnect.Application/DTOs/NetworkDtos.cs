@@ -39,6 +39,8 @@ public sealed record NetworkProviderItem(
     string? PostalCode,
     bool   IsActive,
     bool   AcceptingReferrals,
+    Guid?  OwningOrganizationId,
+    string Visibility,
     string AccessStage,
     List<SpecialtyResponse> Specialties,
     Guid? PrimarySpecialtyId,
@@ -75,6 +77,8 @@ public sealed record NetworkProviderMarker(
     string Phone,
     bool   AcceptingReferrals,
     bool   IsActive,
+    Guid?  OwningOrganizationId,
+    string Visibility,
     double Latitude,
     double Longitude,
     string? GeoPointSource,
@@ -161,7 +165,8 @@ public sealed record NewProviderData(
     /// <summary>True for a roaming provider with no fixed address (AddressLine1 holds a service-area label instead).</summary>
     bool    IsMobile = false,
     /// <summary>Coverage radius in miles from the geocoded city centroid. Required when IsMobile is true.</summary>
-    double? ServiceRadiusMiles = null);
+    double? ServiceRadiusMiles = null,
+    string? Visibility = null);
 
 public sealed record UpdateNetworkProviderRequest(
     string  FirstName,
@@ -182,7 +187,8 @@ public sealed record UpdateNetworkProviderRequest(
     string? GeoPointSource = null,
     string? Title = null,
     bool    IsMobile = false,
-    double? ServiceRadiusMiles = null);
+    double? ServiceRadiusMiles = null,
+    string? Visibility = null);
 
 // ── Provider import ──────────────────────────────────────────────────────────
 

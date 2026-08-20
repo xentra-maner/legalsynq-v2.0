@@ -96,6 +96,8 @@ public class ReferralThreadService : IReferralThreadService
             CreatedAtUtc = referral.CreatedAtUtc,
             TreatmentTypeId   = referral.TreatmentTypeId,
             TreatmentTypeName = treatmentTypeName,
+            LienCompanyName = referral.LienCompanyName,
+            LienCompanyEmail = referral.LienCompanyEmail,
             ProviderHasAccount = ProviderHasPortalAccount(referral.Provider),
             Comments = comments
                 .Select(comment => MapComment(

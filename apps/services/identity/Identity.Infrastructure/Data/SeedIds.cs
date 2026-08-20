@@ -52,6 +52,7 @@ internal static class SeedIds
     public static readonly Guid PrSynqFundApplicantPortal = new("50000000-0000-0000-0000-000000000008");
     public static readonly Guid PrXeniaUser               = new("50000000-0000-0000-0000-000000000009");
     public static readonly Guid PrXeniaAdmin              = new("50000000-0000-0000-0000-000000000010");
+    public static readonly Guid PrCareConnectNetworkManager = new("50000000-0000-0000-0000-000000000011");
 
     // ── Permissions — CareConnect ───────────────────────────────────────────
     public static readonly Guid PermReferralCreate        = new("60000000-0000-0000-0000-000000000001");
@@ -62,6 +63,7 @@ internal static class SeedIds
     public static readonly Guid PermReferralDecline       = new("60000000-0000-0000-0000-000000000006");
     public static readonly Guid PermProviderSearch        = new("60000000-0000-0000-0000-000000000007");
     public static readonly Guid PermProviderMap           = new("60000000-0000-0000-0000-000000000008");
+    public static readonly Guid PermProviderManage        = new("60000000-0000-0000-0000-000000000072");
     public static readonly Guid PermAppointmentCreate     = new("60000000-0000-0000-0000-000000000009");
     public static readonly Guid PermAppointmentUpdate     = new("60000000-0000-0000-0000-000000000010");
     public static readonly Guid PermAppointmentReadOwn    = new("60000000-0000-0000-0000-000000000011");
@@ -179,4 +181,6 @@ internal static class SeedIds
     public static readonly Guid PrOrgTypeRuleXeniaUserFunder     = new("90000000-0000-0000-0000-000000000010");
     public static readonly Guid PrOrgTypeRuleXeniaUserLienOwner  = new("90000000-0000-0000-0000-000000000011");
     public static readonly Guid PrOrgTypeRuleXeniaAdminInternal  = new("90000000-0000-0000-0000-000000000012");
+    public static readonly Guid PrOrgTypeRuleCareConnectNetworkManagerLawFirm = new("90000000-0000-0000-0000-000000000013");
+    public static readonly Guid PrOrgTypeRuleCareConnectNetworkManagerLienOwner = new("90000000-0000-0000-0000-000000000014");
 }

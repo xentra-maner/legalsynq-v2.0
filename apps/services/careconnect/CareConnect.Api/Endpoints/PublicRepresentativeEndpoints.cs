@@ -25,7 +25,12 @@ public static class PublicRepresentativeEndpoints
 
     public static void MapPublicRepresentativeEndpoints(this WebApplication app)
     {
-        var group = app.MapGroup("/api/public/representative");
+        MapPublicPortalGroup(app.MapGroup("/api/public/referral-portal"));
+        MapPublicPortalGroup(app.MapGroup("/api/public/representative"));
+    }
+
+    private static void MapPublicPortalGroup(RouteGroupBuilder group)
+    {
 
         // ── POST /api/public/representative/verify ──────────────────────────
         // Stateless code check — tells the caller whether a code is currently valid and,
@@ -127,7 +132,128 @@ public static class PublicRepresentativeEndpoints
             var metrics = await representativeService.GetMetricsAsync(tenantId.Value, attributionId.Value, from, to, ct);
             return Results.Ok(metrics);
         }).AllowAnonymous().RequireRateLimiting("public-read-limit");
+
+        // ── GET /api/public/referral-portal/law-firms ───────────────────────
+        group.MapGet("/law-firms", async (
+            string? code,
+            HttpContext http,
+            IConfiguration config,
+            IReferralAttributionAccessCodeService codeService,
+            IPendingReferralRequestService pendingService,
+            CancellationToken ct) =>
+        {
+            var tenantId = PublicTrustBoundary.ValidateAndResolveTenantId(http, config, SourceService);
+            if (tenantId is null)
+                return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
+                    detail: "Request origin could not be verified.");
+
+            var attributionId = await VerifyAndResolveAttributionAsync(codeService, tenantId.Value, code, ct);
+            if (attributionId is null)
+                return Results.Json(new { error = "This code is invalid, has expired, or no longer grants access." }, statusCode: StatusCodes.Status401Unauthorized);
+
+            var lawFirms = await pendingService.ListLawFirmOptionsAsync(tenantId.Value, ct);
+            return Results.Ok(lawFirms);
+        }).AllowAnonymous().RequireRateLimiting("public-read-limit");
+
+        // ── GET /api/public/referral-portal/providers ──────────────────────
+        // Master provider list for referral-portal recommendations. Selecting
+        // a provider here records a preference only; it does not create a referral
+        // or notify the provider.
+        group.MapGet("/providers", async (
+            [AsParameters] ProviderSearchParams p,
+            string? code,
+            HttpContext http,
+            IConfiguration config,
+            IReferralAttributionAccessCodeService codeService,
+            IProviderService providerService,
+            CancellationToken ct) =>
+        {
+            var tenantId = PublicTrustBoundary.ValidateAndResolveTenantId(http, config, SourceService);
+            if (tenantId is null)
+                return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
+                    detail: "Request origin could not be verified.");
+
+            var attributionId = await VerifyAndResolveAttributionAsync(codeService, tenantId.Value, code, ct);
+            if (attributionId is null)
+                return Results.Json(new { error = "This code is invalid, has expired, or no longer grants access." }, statusCode: StatusCodes.Status401Unauthorized);
+
+            var query = BuildProviderQuery(p, pageSizeDefault: 100);
+            var result = await providerService.SearchAsync(tenantId.Value, query, ct);
+            return Results.Ok(result);
+        }).AllowAnonymous().RequireRateLimiting("public-read-limit");
+
+        // ── GET /api/public/referral-portal/providers/map ──────────────────
+        group.MapGet("/providers/map", async (
+            [AsParameters] ProviderSearchParams p,
+            string? code,
+            HttpContext http,
+            IConfiguration config,
+            IReferralAttributionAccessCodeService codeService,
+            IProviderService providerService,
+            CancellationToken ct) =>
+        {
+            var tenantId = PublicTrustBoundary.ValidateAndResolveTenantId(http, config, SourceService);
+            if (tenantId is null)
+                return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
+                    detail: "Request origin could not be verified.");
+
+            var attributionId = await VerifyAndResolveAttributionAsync(codeService, tenantId.Value, code, ct);
+            if (attributionId is null)
+                return Results.Json(new { error = "This code is invalid, has expired, or no longer grants access." }, statusCode: StatusCodes.Status401Unauthorized);
+
+            var query = BuildProviderQuery(p, pageSizeDefault: 500, fixedPage: 1, fixedPageSize: 500);
+            var markers = await providerService.GetMarkersAsync(tenantId.Value, query, ct);
+            return Results.Ok(markers);
+        }).AllowAnonymous().RequireRateLimiting("public-read-limit");
+
+        // ── POST /api/public/referral-portal/pending-referrals ───────────────
+        group.MapPost("/pending-referrals", async (
+            string? code,
+            CreatePendingReferralRequest request,
+            HttpContext http,
+            IConfiguration config,
+            IReferralAttributionAccessCodeService codeService,
+            IPendingReferralRequestService pendingService,
+            CancellationToken ct) =>
+        {
+            var tenantId = PublicTrustBoundary.ValidateAndResolveTenantId(http, config, SourceService);
+            if (tenantId is null)
+                return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
+                    detail: "Request origin could not be verified.");
+
+            var attributionId = await VerifyAndResolveAttributionAsync(codeService, tenantId.Value, code, ct);
+            if (attributionId is null)
+                return Results.Json(new { error = "This code is invalid, has expired, or no longer grants access." }, statusCode: StatusCodes.Status401Unauthorized);
+
+            var created = await pendingService.CreateAsync(tenantId.Value, attributionId.Value, request, ct);
+            return Results.Created($"/api/public/referral-portal/pending-referrals/{created.Id}", created);
+        }).AllowAnonymous().RequireRateLimiting("public-referral-limit");
     }
+
+    private static GetProvidersQuery BuildProviderQuery(
+        ProviderSearchParams p,
+        int pageSizeDefault,
+        int? fixedPage = null,
+        int? fixedPageSize = null) => new()
+    {
+        Name = p.Name,
+        CategoryCode = p.CategoryCode,
+        SpecialtyCode = p.SpecialtyCode,
+        City = p.City,
+        State = p.State,
+        AcceptingReferrals = p.AcceptingReferrals,
+        IsActive = p.IsActive ?? true,
+        Page = fixedPage ?? Math.Max(1, p.Page ?? 1),
+        PageSize = fixedPageSize ?? Math.Clamp(p.PageSize ?? pageSizeDefault, 1, pageSizeDefault),
+        Latitude = p.Latitude,
+        Longitude = p.Longitude,
+        RadiusMiles = p.RadiusMiles,
+        NorthLat = p.NorthLat,
+        SouthLat = p.SouthLat,
+        EastLng = p.EastLng,
+        WestLng = p.WestLng,
+        OrganizationId = p.OrganizationId,
+    };
 
     /// <summary>
     /// The single choke point every data endpoint above calls through: re-verifies the raw

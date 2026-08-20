@@ -21,6 +21,8 @@ export interface ProviderMapProps {
   centerLat?:        number;
   centerLng?:        number;
   defaultZoom?:      number;
+  actionLabel?:      string;
+  onAction?:         (marker: ProviderMarker) => void;
 }
 
 const LeafletMap = dynamic(

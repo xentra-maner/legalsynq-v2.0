@@ -13,6 +13,7 @@ import { NextResponse, type NextRequest } from 'next/server';
  */
 const NOMINATIM = 'https://nominatim.openstreetmap.org';
 const US_CENSUS_GEOCODER = 'https://geocoding.geo.census.gov/geocoder/locations/onelineaddress';
+const ZIPPOPOTAM = 'https://api.zippopotam.us/us';
 const USER_AGENT = 'LegalSynq/2.0 contact@legalsynq.com';
 const INTERNAL_REQUEST_SECRET =
   process.env['PublicTrustBoundary__InternalRequestSecret'] ??
@@ -45,6 +46,7 @@ const STATE_ABBR: Record<string, string> = {
   Wisconsin: 'WI', Wyoming: 'WY',
 };
 const STATE_CODES = new Set(Object.values(STATE_ABBR));
+const ZIP_CODE_PATTERN = /^\d{5}(?:-\d{4})?$/;
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const q     = (request.nextUrl.searchParams.get('q') ?? '').trim();
@@ -127,6 +129,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (suggestions.length >= 5) break;
   }
 
+  // Nominatim often returns no coordinates for ZIP-only queries. The provider
+  // map's ZIP filter needs a ZIP centroid, not a deliverable street address.
+  if (suggestions.length === 0 && loose && ZIP_CODE_PATTERN.test(q)) {
+    const zipSuggestion = await getZipCodeSuggestion(q);
+    if (zipSuggestion) suggestions.push(zipSuggestion);
+  }
+
   // Nominatim can be rate-limited and does not contain every U.S. street address.
   // The Census geocoder is keyless and authoritative for domestic address ranges.
   if (suggestions.length === 0) {
@@ -137,6 +146,51 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   return NextResponse.json(suggestions, {
     headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' },
   });
+}
+
+async function getZipCodeSuggestion(q: string): Promise<AddressSuggestion | null> {
+  const zip = q.slice(0, 5);
+
+  try {
+    const res = await fetch(`${ZIPPOPOTAM}/${encodeURIComponent(zip)}`, {
+      headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+      signal: AbortSignal.timeout(3000),
+      next: { revalidate: 86400 },
+    });
+    if (!res.ok) return null;
+
+    const payload = await res.json() as {
+      'post code'?: string;
+      places?: Array<{
+        'place name'?: string;
+        'state abbreviation'?: string;
+        latitude?: string;
+        longitude?: string;
+      }>;
+    };
+    const place = payload.places?.[0];
+    const latitude = Number(place?.latitude);
+    const longitude = Number(place?.longitude);
+    if (!place || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+
+    const postalCode = payload['post code']?.slice(0, 5) || zip;
+    const city = place['place name'] ?? '';
+    const state = place['state abbreviation'] ?? '';
+    const displayName = [city, state, postalCode].filter(Boolean).join(', ');
+
+    return {
+      displayName,
+      addressLine1: '',
+      city,
+      state,
+      postalCode,
+      addressSelectionToken: createAddressSelectionToken({ addressLine1: '', city, state, postalCode }),
+      latitude,
+      longitude,
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function getCensusAddressSuggestion(q: string): Promise<AddressSuggestion | null> {

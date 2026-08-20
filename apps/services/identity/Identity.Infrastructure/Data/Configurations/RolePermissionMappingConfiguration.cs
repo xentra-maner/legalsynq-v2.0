@@ -28,6 +28,7 @@ public class RolePermissionMappingConfiguration : IEntityTypeConfiguration<RoleP
 
         var referrer  = SeedIds.PrCareConnectReferrer;
         var receiver  = SeedIds.PrCareConnectReceiver;
+        var networkManager = SeedIds.PrCareConnectNetworkManager;
         var seller    = SeedIds.PrSynqLienSeller;
         var buyer     = SeedIds.PrSynqLienBuyer;
         var holder    = SeedIds.PrSynqLienHolder;
@@ -44,6 +45,10 @@ public class RolePermissionMappingConfiguration : IEntityTypeConfiguration<RoleP
             new { ProductRoleId = referrer, PermissionId = SeedIds.PermProviderSearch },
             new { ProductRoleId = referrer, PermissionId = SeedIds.PermProviderMap },
             new { ProductRoleId = referrer, PermissionId = SeedIds.PermAppointmentReadOwn },
+
+            new { ProductRoleId = networkManager, PermissionId = SeedIds.PermProviderSearch },
+            new { ProductRoleId = networkManager, PermissionId = SeedIds.PermProviderMap },
+            new { ProductRoleId = networkManager, PermissionId = SeedIds.PermProviderManage },
 
             new { ProductRoleId = receiver, PermissionId = SeedIds.PermReferralReadAddressed },
             new { ProductRoleId = receiver, PermissionId = SeedIds.PermReferralAccept },

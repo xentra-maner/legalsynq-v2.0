@@ -5,7 +5,12 @@ import { useGoogleMapsScript } from '@/lib/use-google-maps-script';
 import { circleOutlinePoints, DASHED_RING_ICONS } from '@/lib/coverage-circle';
 import type { PublicProviderMarker } from '@/lib/public-network-api';
 
-interface NumberedMarker extends PublicProviderMarker { index: number; }
+interface NumberedMarker extends PublicProviderMarker {
+  index: number;
+  phone?: string | null;
+  addressLine1?: string | null;
+  postalCode?: string | null;
+}
 interface SearchLocationMarker { latitude: number; longitude: number; label: string; }
 interface PublicNetworkMapProps {
   markers: NumberedMarker[];
@@ -16,6 +21,7 @@ interface PublicNetworkMapProps {
   hideSearchMarker?: boolean;
   onSelect: (id: string) => void;
   onRequestReferral: (m: PublicProviderMarker) => void;
+  requestReferralLabel?: string;
 }
 
 const US_CENTER = { lat: 39.5, lng: -98.35 };
@@ -59,7 +65,7 @@ function getProviderIdentity(provider: { name: string; organizationName?: string
   };
 }
 
-export function PublicNetworkMapGoogle({ markers, selectedId, zoomToId, onZoomed, searchLocation, hideSearchMarker = false, onSelect, onRequestReferral }: PublicNetworkMapProps) {
+export function PublicNetworkMapGoogle({ markers, selectedId, zoomToId, onZoomed, searchLocation, hideSearchMarker = false, onSelect, onRequestReferral, requestReferralLabel = 'Send Referral' }: PublicNetworkMapProps) {
   const isLoaded     = useGoogleMapsScript();
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef       = useRef<google.maps.Map | null>(null);
@@ -69,6 +75,10 @@ export function PublicNetworkMapGoogle({ markers, selectedId, zoomToId, onZoomed
   const searchMarkerRef = useRef<google.maps.Marker | null>(null);
   const infoRef      = useRef<google.maps.InfoWindow | null>(null);
   const prevBoundsKey = useRef('');
+  const markersRef = useRef(markers);
+  markersRef.current = markers;
+  const onZoomedRef = useRef(onZoomed);
+  onZoomedRef.current = onZoomed;
 
   useEffect(() => {
     if (!isLoaded || !containerRef.current || mapRef.current) return;
@@ -135,17 +145,6 @@ export function PublicNetworkMapGoogle({ markers, selectedId, zoomToId, onZoomed
       searchMarkerRef.current.setMap(null);
     }
 
-    // Animate to provider if zoomToId is set (e.g. left panel click)
-    if (typeof zoomToId === 'string' && zoomToId) {
-      const m = markers.find(mk => mk.id === zoomToId);
-      if (m) {
-        map.panTo({ lat: m.latitude, lng: m.longitude });
-        const currentZoom = map.getZoom() ?? 0;
-        if (currentZoom < 13) map.setZoom(13);
-        onZoomed?.();
-      }
-    }
-
     // Marker management
     const seen = new Set<string>();
     for (const m of markers) {
@@ -209,12 +208,13 @@ export function PublicNetworkMapGoogle({ markers, selectedId, zoomToId, onZoomed
               <p style="font-size:12px;color:#9ca3af;margin:0 0 8px">${captured.isMobile
                 ? `Mobile · ${[captured.serviceAreaLabel, `${captured.city}, ${captured.state}`].filter((s): s is string => Boolean(s)).map(esc).join(' · ')}${captured.serviceRadiusMiles ? ` · ${captured.serviceRadiusMiles}mi radius` : ''}`
                 : `${esc(captured.city)}, ${esc(captured.state)}`}</p>
+              ${captured.phone ? `<p style="font-size:12px;color:#6b7280;margin:0 0 8px">${esc(captured.phone)}</p>` : ''}
               ${typeof captured.distanceMiles === 'number' ? `<p style="font-size:12px;color:#2563eb;margin:0 0 8px;font-weight:600">${captured.distanceMiles.toFixed(1)} mi away</p>` : ''}
               ${(captured.specialties ?? []).length > 0 ? `<p style="font-size:11px;color:#1d4ed8;margin:0 0 8px">${captured.specialties.map(s => esc(s.name)).join(', ')}</p>` : ''}
               ${captured.acceptingReferrals
                 ? `<span style="font-size:11px;color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:9999px;padding:2px 8px;display:inline-block;margin-bottom:10px">Accepting referrals</span>`
                 : `<span style="font-size:11px;color:#6b7280;background:#f9fafb;border:1px solid #e5e7eb;border-radius:9999px;padding:2px 8px;display:inline-block;margin-bottom:10px">Not accepting referrals</span>`}
-              ${captured.acceptingReferrals ? `<div><button id="gm-send-referral-${captured.id}" style="font-size:12px;color:#fff;background:#dc2626;border:none;border-radius:6px;padding:6px 14px;cursor:pointer;font-weight:600;display:block;width:100%">Send Referral</button></div>` : ''}
+              ${captured.acceptingReferrals ? `<div><button id="gm-send-referral-${captured.id}" style="font-size:12px;color:#fff;background:#dc2626;border:none;border-radius:6px;padding:6px 14px;cursor:pointer;font-weight:600;display:block;width:100%">${esc(requestReferralLabel)}</button></div>` : ''}
             </div>`;
           infoRef.current?.setContent(content);
           infoRef.current?.open({ map, anchor: marker });
@@ -239,7 +239,32 @@ export function PublicNetworkMapGoogle({ markers, selectedId, zoomToId, onZoomed
       if (!seen.has(id)) { ring.setMap(null); ringRefs.current.delete(id); }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [markers, selectedId, isLoaded, zoomToId, searchLocation, hideSearchMarker]);
+  }, [markers, selectedId, isLoaded, searchLocation, hideSearchMarker, requestReferralLabel]);
+
+  useEffect(() => {
+    if (!zoomToId || !isLoaded) return;
+    const map = mapRef.current;
+    if (!map) return;
+    const marker = markersRef.current.find(m => m.id === zoomToId);
+    if (!marker) return;
+
+    map.panTo({ lat: marker.latitude, lng: marker.longitude });
+    const currentZoom = map.getZoom() ?? 0;
+    if (currentZoom < 13) map.setZoom(13);
+    onZoomedRef.current?.();
+  }, [zoomToId, isLoaded]);
+
+  useEffect(() => {
+    if (!selectedId || !isLoaded) return;
+    const map = mapRef.current;
+    if (!map) return;
+    const marker = markersRef.current.find(m => m.id === selectedId);
+    if (!marker) return;
+
+    map.panTo({ lat: marker.latitude, lng: marker.longitude });
+    const currentZoom = map.getZoom() ?? 0;
+    if (currentZoom < 13) map.setZoom(13);
+  }, [selectedId, isLoaded]);
 
   useEffect(() => () => {
     for (const m of markerRefs.current.values()) m.setMap(null);

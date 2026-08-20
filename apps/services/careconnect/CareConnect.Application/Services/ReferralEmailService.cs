@@ -1087,6 +1087,12 @@ public class ReferralEmailService : IReferralEmailService
                 ? $"<a href='mailto:{r.ReferrerEmail}' style='color:#1a56db'>{r.ReferrerEmail}</a>"
                 : null);
 
+        var lienCompanyRows =
+            Row("Name",  r.LienCompanyName) +
+            Row("Email", r.LienCompanyEmail is not null
+                ? $"<a href='mailto:{r.LienCompanyEmail}' style='color:#1a56db'>{r.LienCompanyEmail}</a>"
+                : null);
+
         var notesBlock = r.Notes is not null
             ? $"""
               <div style="margin-top:28px">
@@ -1116,6 +1122,7 @@ public class ReferralEmailService : IReferralEmailService
             {locationLine}
             {Section("Client Information", clientRows)}
             {Section("Referring Case Manager", referrerRows)}
+            {Section("Lien Company", lienCompanyRows)}
             {notesBlock}
             <p style="margin-top:28px">
               <a href="{entryLink}" style="display:inline-block;background:#1a56db;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px">{ctaLabel}</a>
@@ -1145,6 +1152,12 @@ public class ReferralEmailService : IReferralEmailService
             Row("Provider Location", FormatLocation(r, p)) +
             Row("Contact",  string.IsNullOrWhiteSpace(p.Phone) ? null : p.Phone);
 
+        var lienCompanyRows =
+            Row("Name",  r.LienCompanyName) +
+            Row("Email", r.LienCompanyEmail is not null
+                ? $"<a href='mailto:{r.LienCompanyEmail}' style='color:#1a56db'>{r.LienCompanyEmail}</a>"
+                : null);
+
         var footer = firmName is not null
             ? $"This referral was submitted on behalf of <strong>{firmName}</strong>."
             : "Your referral has been submitted successfully.";
@@ -1158,6 +1171,7 @@ public class ReferralEmailService : IReferralEmailService
             </p>
             {Section("Patient Details", patientRows)}
             {Section("Provider", providerRows)}
+            {Section("Lien Company", lienCompanyRows)}
             <div style="text-align:center;margin:28px 0">
               <a href="{viewLink}" style="display:inline-block;background:#1a56db;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px">Track Referral Status</a>
             </div>
@@ -1191,6 +1205,12 @@ public class ReferralEmailService : IReferralEmailService
                 ? $"<a href='mailto:{r.ReferrerEmail}' style='color:#1a56db'>{r.ReferrerEmail}</a>"
                 : null);
 
+        var lienCompanyRows =
+            Row("Name",  r.LienCompanyName) +
+            Row("Email", r.LienCompanyEmail is not null
+                ? $"<a href='mailto:{r.LienCompanyEmail}' style='color:#1a56db'>{r.LienCompanyEmail}</a>"
+                : null);
+
         var notesBlock = r.Notes is not null
             ? $"""
               <div style="margin-top:28px">
@@ -1219,6 +1239,7 @@ public class ReferralEmailService : IReferralEmailService
             {locationLine}
             {Section("Client Information", clientRows)}
             {Section("Referring Case Manager", referrerRows)}
+            {Section("Lien Company", lienCompanyRows)}
             {notesBlock}
             <p style="margin-top:28px">
               <a href="{entryLink}" style="display:inline-block;background:#1a56db;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px">{ctaLabel}</a>

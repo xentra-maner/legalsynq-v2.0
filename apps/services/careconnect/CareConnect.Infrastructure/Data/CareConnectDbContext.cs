@@ -16,6 +16,8 @@ public class CareConnectDbContext : DbContext
     public DbSet<Specialty> Specialties => Set<Specialty>();
     public DbSet<ProviderSpecialty> ProviderSpecialties => Set<ProviderSpecialty>();
     public DbSet<Referral> Referrals => Set<Referral>();
+    public DbSet<PendingReferralRequest> PendingReferralRequests => Set<PendingReferralRequest>();
+    public DbSet<PendingReferralProviderPreference> PendingReferralProviderPreferences => Set<PendingReferralProviderPreference>();
     public DbSet<ReferralStatusHistory> ReferralStatusHistories => Set<ReferralStatusHistory>();
     public DbSet<ReferralProviderReassignment> ReferralProviderReassignments => Set<ReferralProviderReassignment>();
     public DbSet<Facility> Facilities => Set<Facility>();

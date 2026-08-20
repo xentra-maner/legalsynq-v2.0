@@ -12,6 +12,8 @@ public class NetworkProvider : AuditableEntity
     public Guid FacilityId      { get; private set; }
     public bool IsActive        { get; private set; }
     public bool AcceptingReferrals { get; private set; }
+    public Guid? OwningOrganizationId { get; private set; }
+    public string Visibility { get; private set; } = ProviderVisibility.Public;
 
     public ProviderNetwork Network  { get; private set; } = null!;
     public Provider        Provider { get; private set; } = null!;
@@ -25,7 +27,9 @@ public class NetworkProvider : AuditableEntity
         Guid providerId,
         Guid facilityId,
         bool isActive,
-        bool acceptingReferrals)
+        bool acceptingReferrals,
+        Guid? owningOrganizationId = null,
+        string visibility = ProviderVisibility.Public)
     {
         return new NetworkProvider
         {
@@ -36,6 +40,8 @@ public class NetworkProvider : AuditableEntity
             FacilityId       = facilityId,
             IsActive         = isActive,
             AcceptingReferrals = acceptingReferrals,
+            OwningOrganizationId = owningOrganizationId,
+            Visibility       = ProviderVisibility.All.Contains(visibility) ? visibility : ProviderVisibility.Public,
             CreatedAtUtc     = DateTime.UtcNow,
             UpdatedAtUtc     = DateTime.UtcNow,
         };
@@ -47,4 +53,26 @@ public class NetworkProvider : AuditableEntity
         AcceptingReferrals = acceptingReferrals;
         UpdatedAtUtc = DateTime.UtcNow;
     }
+
+    public void SetVisibility(string visibility, Guid? updatedByUserId)
+    {
+        if (!ProviderVisibility.All.Contains(visibility))
+            throw new ArgumentOutOfRangeException(nameof(visibility), visibility, "Invalid provider visibility.");
+
+        Visibility = visibility;
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+}
+
+public static class ProviderVisibility
+{
+    public const string Private = "Private";
+    public const string Public = "Public";
+
+    public static readonly IReadOnlySet<string> All = new HashSet<string>(StringComparer.Ordinal)
+    {
+        Private,
+        Public,
+    };
 }

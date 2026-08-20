@@ -388,7 +388,9 @@ public class NetworkService : INetworkService
         Guid networkId,
         AddProviderToNetworkRequest request,
         Guid? userId,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Guid? owningOrganizationId = null,
+        bool isTenantAdmin = false)
     {
         _ = await _networks.GetByIdAsync(tenantId, networkId, ct)
             ?? throw new NotFoundException($"Network {networkId} not found.");
@@ -478,8 +480,9 @@ public class NetworkService : INetworkService
         await EnsureProviderFacilityAsync(provider.Id, facility.Id, isPrimary: true, ct);
 
         var existing = await _networks.GetMembershipAsync(networkId, provider.Id, facility.Id, ct);
+        var visibility = ResolveVisibility(request.NewProvider?.Visibility, isTenantAdmin);
         if (existing is null)
-            await _networks.AddProviderAsync(NetworkProvider.Create(tenantId, networkId, provider.Id, facility.Id, isActive, acceptingReferrals), ct);
+            await _networks.AddProviderAsync(NetworkProvider.Create(tenantId, networkId, provider.Id, facility.Id, isActive, acceptingReferrals, owningOrganizationId, visibility), ct);
         else
             _logger.LogDebug("Provider {ProviderId} facility {FacilityId} already in network {NetworkId} — no-op.", provider.Id, facility.Id, networkId);
 
@@ -491,7 +494,7 @@ public class NetworkService : INetworkService
         // on GetMembershipAsync's include list).
         return loaded is not null
             ? ToProviderItem(loaded)
-            : ToProviderItem(existing ?? NetworkProvider.Create(tenantId, networkId, provider.Id, facility.Id, isActive, acceptingReferrals), provider, facility);
+            : ToProviderItem(existing ?? NetworkProvider.Create(tenantId, networkId, provider.Id, facility.Id, isActive, acceptingReferrals, owningOrganizationId, visibility), provider, facility);
     }
 
     public async Task RemoveProviderAsync(
@@ -563,6 +566,8 @@ public class NetworkService : INetworkService
                     f.Phone ?? p.Phone,
                     np.AcceptingReferrals,
                     np.IsActive,
+                    np.OwningOrganizationId,
+                    np.Visibility,
                     f.Latitude ?? p.Latitude ?? 0.0,
                     f.Longitude ?? p.Longitude ?? 0.0,
                     f.GeoPointSource ?? p.GeoPointSource,
@@ -582,7 +587,8 @@ public class NetworkService : INetworkService
         Guid providerId,
         UpdateNetworkProviderRequest request,
         Guid? userId,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool isTenantAdmin = false)
     {
         _ = await _networks.GetByIdAsync(tenantId, networkId, ct)
             ?? throw new NotFoundException($"Network {networkId} not found.");
@@ -652,6 +658,12 @@ public class NetworkService : INetworkService
             isMobile: request.IsMobile,
             serviceRadiusMiles: request.ServiceRadiusMiles);
         membership.UpdateStatus(request.IsActive, request.AcceptingReferrals);
+        if (!string.IsNullOrWhiteSpace(request.Visibility))
+        {
+            if (!isTenantAdmin)
+                throw new ForbiddenException("Only tenant administrators can change provider visibility.");
+            membership.SetVisibility(request.Visibility, userId);
+        }
 
         await _networks.UpdateProviderInRegistryAsync(provider, ct);
         await _networks.UpdateFacilityAsync(facility, ct);
@@ -685,7 +697,7 @@ public class NetworkService : INetworkService
         var primarySpecialty = specialties.FirstOrDefault();
         return new(np.Id, np.Id, p.Id, f.Id, p.Name, p.Title, p.OrganizationName, f.Name,
             f.Email ?? p.Email, f.Phone ?? p.Phone, f.City, f.State,
-            f.AddressLine1, f.PostalCode, np.IsActive, np.AcceptingReferrals, p.AccessStage,
+            f.AddressLine1, f.PostalCode, np.IsActive, np.AcceptingReferrals, np.OwningOrganizationId, np.Visibility, p.AccessStage,
             specialties,
             primarySpecialty?.Id,
             primarySpecialty?.Name,
@@ -730,6 +742,18 @@ public class NetworkService : INetworkService
             facility.ServiceRadiusMiles,
             facility.IsMobile ? facility.AddressLine1 : null);
         }
+    }
+
+    private static string ResolveVisibility(string? requestedVisibility, bool isTenantAdmin)
+    {
+        if (string.IsNullOrWhiteSpace(requestedVisibility))
+            return isTenantAdmin ? ProviderVisibility.Public : ProviderVisibility.Private;
+        if (!ProviderVisibility.All.Contains(requestedVisibility))
+            throw new ValidationException("Validation failed.",
+                new() { ["visibility"] = [$"Visibility must be one of: {string.Join(", ", ProviderVisibility.All)}."] });
+        if (!isTenantAdmin && requestedVisibility != ProviderVisibility.Private)
+            throw new ForbiddenException("Only tenant administrators can make providers public.");
+        return requestedVisibility;
     }
 
     private async Task<Provider> ResolveProviderForAddAsync(

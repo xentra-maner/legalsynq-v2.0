@@ -11,15 +11,16 @@ interface RepresentativeShellProps {
 }
 
 const NAV_ITEMS = [
-  { href: "/careconnect/representative/dashboard", label: "Dashboard", icon: "ri-dashboard-line" },
-  { href: "/careconnect/representative/referrals", label: "My Referrals", icon: "ri-file-list-3-line" },
+  { href: "/careconnect/referral/dashboard", label: "Dashboard", icon: "ri-dashboard-line" },
+  { href: "/careconnect/referral/submit", label: "Submit Request", icon: "ri-send-plane-line" },
+  { href: "/careconnect/referral/referrals", label: "My Referrals", icon: "ri-file-list-3-line" },
 ];
 
 const ACTIVE_COLOR = "#f97316"; // orange-500 — same GLOBAL_DEFAULTS.appearance.nav.activeColor as the main app
 const ACTIVE_BG    = "#fff7ed"; // orange-50  — same GLOBAL_DEFAULTS.appearance.nav.activeBg
 
 /**
- * Dedicated layout shell for the restricted, fully anonymous Referral Representative
+ * Dedicated layout shell for the restricted, fully anonymous Referral
  * Portal. Deliberately does NOT import AppShell, PRODUCT_NAV, or any admin navigation
  * component — this is structural isolation, not conditional hiding. There is no session
  * here at all: this shell can never reach tenant settings, user administration,
@@ -106,7 +107,7 @@ function RepresentativeSidebar() {
                 key={item.href}
                 href={item.href}
                 className={clsx(
-                  "relative flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[12px] font-medium transition-colors",
+                  "relative flex cursor-pointer items-center gap-2.5 px-3 py-2.5 rounded-lg text-[12px] font-medium transition-colors",
                   !isActive && "text-gray-600 hover:bg-gray-100 hover:text-gray-900",
                 )}
                 style={isActive ? { backgroundColor: ACTIVE_BG, color: "#0f1928" } : undefined}

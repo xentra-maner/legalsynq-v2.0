@@ -19,7 +19,10 @@ public class SpecialtyRepository : ISpecialtyRepository
         var q = _db.Specialties.AsNoTracking().AsQueryable();
         if (!includeInactive)
             q = q.Where(s => s.IsActive);
-        return await q.OrderBy(s => s.Name).ToListAsync(ct);
+        return await q
+            .OrderBy(s => s.Code == "OTHER" ? 1 : 0)
+            .ThenBy(s => s.Name)
+            .ToListAsync(ct);
     }
 
     public async Task<Specialty?> GetByIdAsync(Guid id, CancellationToken ct = default)

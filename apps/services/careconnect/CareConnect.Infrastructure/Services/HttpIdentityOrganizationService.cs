@@ -539,6 +539,49 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
         }
     }
 
+    public async Task<List<LawFirmOrganizationOption>> ListLawFirmOrganizationsAsync(
+        Guid tenantId,
+        CancellationToken ct = default)
+    {
+        if (!_isEnabled || tenantId == Guid.Empty)
+            return [];
+
+        try
+        {
+            using var client = BuildIdentityClient();
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+
+            using var response = await client.GetAsync(
+                $"api/admin/organizations?tenantId={tenantId}&orgType=LAW_FIRM", cts.Token);
+
+            if (!response.IsSuccessStatusCode)
+                return [];
+
+            var result = await response.Content.ReadFromJsonAsync<OrganizationListResponse>(
+                cancellationToken: cts.Token);
+
+            return result?.Items?
+                .Where(o => o.Id != Guid.Empty && !string.IsNullOrWhiteSpace(o.DisplayName ?? o.Name))
+                .Select(o => new LawFirmOrganizationOption
+                {
+                    Id = o.Id,
+                    Name = (o.DisplayName ?? o.Name)!.Trim(),
+                })
+                .ToList() ?? [];
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("Identity law-firm organization lookup timed out for tenant {TenantId}.", tenantId);
+            return [];
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Identity law-firm organization lookup failed for tenant {TenantId}.", tenantId);
+            return [];
+        }
+    }
+
     // ── Shared HTTP client builder ─────────────────────────────────────────────
 
     private HttpClient BuildIdentityClient()
@@ -617,6 +660,24 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
     {
         [JsonPropertyName("status")]
         public string? Status { get; set; }
+    }
+
+    private sealed class OrganizationListResponse
+    {
+        [JsonPropertyName("items")]
+        public List<OrganizationListItem>? Items { get; set; }
+    }
+
+    private sealed class OrganizationListItem
+    {
+        [JsonPropertyName("id")]
+        public Guid Id { get; set; }
+
+        [JsonPropertyName("name")]
+        public string? Name { get; set; }
+
+        [JsonPropertyName("displayName")]
+        public string? DisplayName { get; set; }
     }
 
     private sealed class IsOwnerResponse

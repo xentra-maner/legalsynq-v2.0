@@ -93,7 +93,7 @@ export function Modal({
             <button
               onClick={onClose}
               aria-label="Close dialog"
-              className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+              className="cursor-pointer p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
             >
               <i className="ri-close-line text-xl" />
             </button>
@@ -156,14 +156,14 @@ export function ConfirmDialog({
           <button
             onClick={onClose}
             disabled={loading}
-            className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 disabled:opacity-50"
+            className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             onClick={onConfirm}
             disabled={loading}
-            className={`text-sm px-4 py-2 rounded-lg ${btnClass} disabled:opacity-50`}
+            className={`text-sm px-4 py-2 rounded-lg cursor-pointer ${btnClass} disabled:cursor-not-allowed disabled:opacity-50`}
           >
             {loading ? "Processing..." : confirmLabel}
           </button>
@@ -233,14 +233,14 @@ export function FormModal({
         <>
           <button
             onClick={onClose}
-            className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600"
+            className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 cursor-pointer"
           >
             Cancel
           </button>
           <button
             onClick={onSubmit}
             disabled={submitDisabled || loading}
-            className={`text-sm px-4 py-2 rounded-lg text-white disabled:opacity-50 ${primaryButtonClassName ?? "bg-primary hover:bg-primary/90"}`}
+            className={`text-sm px-4 py-2 rounded-lg text-white cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 ${primaryButtonClassName ?? "bg-primary hover:bg-primary/90"}`}
           >
             {loading ? "Saving..." : submitLabel}
           </button>

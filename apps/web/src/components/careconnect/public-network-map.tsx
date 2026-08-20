@@ -7,6 +7,9 @@ import type { PublicProviderMarker } from '@/lib/public-network-api';
 
 export interface NumberedMarker extends PublicProviderMarker {
   index: number;
+  phone?: string | null;
+  addressLine1?: string | null;
+  postalCode?: string | null;
 }
 
 export interface SearchLocationMarker {
@@ -24,6 +27,7 @@ export interface PublicNetworkMapProps {
   hideSearchMarker?: boolean;
   onSelect:          (id: string) => void;
   onRequestReferral: (m: PublicProviderMarker) => void;
+  requestReferralLabel?: string;
 }
 
 const LeafletMap = dynamic(

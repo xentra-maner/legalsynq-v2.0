@@ -40,6 +40,8 @@ import type {
   ReferralAttributionAccessCode,
   GeneratedReferralAttributionAccessCode,
   CreateReferralAttributionAccessCodeRequest,
+  PendingReferralRequest,
+  ConvertPendingReferralRequest,
 } from '@/types/careconnect';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -341,6 +343,17 @@ export const careConnectApi = {
     /** GET /api/networks/{id}/providers/markers — map markers for the network */
     getMarkers: (id: string) =>
       apiClient.get<NetworkProviderMarker[]>(`/careconnect/api/networks/${id}/providers/markers`),
+  },
+
+  pendingReferralRequests: {
+    search: (params: { status?: string; page?: number; pageSize?: number } = {}) =>
+      apiClient.get<PagedResponse<PendingReferralRequest>>(
+        `/careconnect/api/pending-referral-requests${toQs(params as Record<string, unknown>)}`,
+      ),
+    getById: (id: string) =>
+      apiClient.get<PendingReferralRequest>(`/careconnect/api/pending-referral-requests/${id}`),
+    convert: (id: string, body: ConvertPendingReferralRequest) =>
+      apiClient.post<ReferralDetail>(`/careconnect/api/pending-referral-requests/${id}/convert`, body),
   },
 
   // CC2-INT-B09: Provider tenant self-onboarding

@@ -30,7 +30,7 @@ interface Props {
 }
 
 /**
- * Fully anonymous gate for the Referral Representative Portal — no login, matching the
+ * Fully anonymous gate for the Referral Portal — no login, matching the
  * public network directory's AccessCodeGate branding/UX. Unlike that gate (which caches a
  * one-time client-side "unlocked" boolean while the actual data endpoints stay open
  * regardless), this one persists the raw code itself and every page under it resends that
@@ -138,7 +138,7 @@ export function RepresentativeAccessCodeGate({ tenantId, children }: Props) {
             priority
           />
           <p className="text-slate-300 text-xs tracking-wide text-center">
-            Referral Representative Portal
+            Referral Portal
           </p>
         </div>
 
@@ -179,7 +179,7 @@ export function RepresentativeAccessCodeGate({ tenantId, children }: Props) {
           <button
             type="submit"
             disabled={!code.trim() || submitting}
-            className="w-full rounded-lg text-sm font-semibold py-2.5 transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 bg-orange-500 text-white hover:bg-orange-600 disabled:bg-orange-300"
+            className="w-full cursor-pointer rounded-lg text-sm font-semibold py-2.5 transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 bg-orange-500 text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-orange-300"
           >
             {submitting ? 'Verifying…' : 'View My Referrals'}
           </button>

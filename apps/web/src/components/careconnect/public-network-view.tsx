@@ -1132,6 +1132,8 @@ interface ReferralForm {
   serviceType:          string;
   treatmentTypeId:      string;
   referralAttributionId: string;
+  lienCompanyName:      string;
+  lienCompanyEmail:     string;
   notes:                string;
   firmName:             string;
   contactFirstName:     string;
@@ -1147,6 +1149,8 @@ const EMPTY_FORM: ReferralForm = {
   serviceType: 'General Referral',
   treatmentTypeId: '',
   referralAttributionId: '',
+  lienCompanyName: '',
+  lienCompanyEmail: '',
   notes: '',
   firmName: '', contactFirstName: '', contactLastName: '', email: '', phone: '',
 };
@@ -1332,6 +1336,8 @@ function ReferralPanel({
     else if (!isValidPhone(form.patientPhone)) errs['patientPhone'] = 'Enter a valid 10-digit phone number.';
     if (form.patientEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.patientEmail.trim()))
       errs['patientEmail'] = 'Enter a valid email address.';
+    if (form.lienCompanyEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.lienCompanyEmail.trim()))
+      errs['lienCompanyEmail'] = 'Enter a valid lien company email address.';
     if (!form.patientDob) errs['patientDob'] = 'Date of birth is required.';
     else if (!isValidIsoDate(form.patientDob)) errs['patientDob'] = 'Enter a valid date of birth.';
     else if (!hasReasonableYear(form.patientDob)) errs['patientDob'] = 'Please enter a valid year (1900 or later).';
@@ -1424,6 +1430,8 @@ function ReferralPanel({
         urgency:                form.urgency,
         treatmentTypeId:        form.treatmentTypeId || undefined,
         referralAttributionId:  form.referralAttributionId || undefined,
+        lienCompanyName:        form.lienCompanyName.trim() || undefined,
+        lienCompanyEmail:       form.lienCompanyEmail.trim() || undefined,
         notes:                  form.notes.trim() || undefined,
       } satisfies PublicReferralRequest,
     }));
@@ -1453,6 +1461,8 @@ function ReferralPanel({
             urgency:          payload.urgency ?? 'Normal',
             treatmentTypeId:  form.treatmentTypeId || undefined,
             referralAttributionId: form.referralAttributionId || undefined,
+            lienCompanyName:  form.lienCompanyName.trim() || undefined,
+            lienCompanyEmail: form.lienCompanyEmail.trim() || undefined,
             dateOfAccident:   form.patientDateOfAccident || undefined,
             notes:            authNotes,
             referrerScopeSignature,
@@ -1870,6 +1880,24 @@ function ReferralPanel({
                     onChange={e => update('notes', e.target.value)}
                     disabled={state === 'submitting'}
                     className={panelInputCls(false) + ' resize-none'}
+                  />
+                </PanelField>
+                <PanelField label="Lien company name" hint="optional">
+                  <input
+                    type="text" value={form.lienCompanyName}
+                    placeholder="Lien company"
+                    onChange={e => update('lienCompanyName', e.target.value)}
+                    disabled={state === 'submitting'}
+                    className={panelInputCls(false)}
+                  />
+                </PanelField>
+                <PanelField label="Lien company email" hint="optional">
+                  <input
+                    type="email" value={form.lienCompanyEmail}
+                    placeholder="Email address"
+                    onChange={e => update('lienCompanyEmail', e.target.value)}
+                    disabled={state === 'submitting'}
+                    className={panelInputCls(false)}
                   />
                 </PanelField>
               </div>

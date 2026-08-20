@@ -58,6 +58,8 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
   const [serviceType,     setServiceType]     = useState('General Referral');
   const [treatmentTypeId, setTreatmentTypeId] = useState('');
   const [notes,            setNotes]            = useState('');
+  const [lienCompanyName,  setLienCompanyName]  = useState('');
+  const [lienCompanyEmail, setLienCompanyEmail] = useState('');
   // Referral Attribution — optional, defaults to blank. Never auto-selected.
   const [referralAttributionId, setReferralAttributionId] = useState('');
 
@@ -119,6 +121,8 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
       urgency,
       treatmentTypeId:  treatmentTypeId || undefined,
       notes:            notes.trim() || undefined,
+      lienCompanyName:  lienCompanyName.trim() || undefined,
+      lienCompanyEmail: lienCompanyEmail.trim() || undefined,
       referralAttributionId: referralAttributionId || undefined,
       referrerEmail:    referrerEmail || undefined,
       referrerName:     referrerName  || undefined,
@@ -389,6 +393,28 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
                     rows={3}
                     placeholder="Optional additional notes for the provider…"
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Lien company name</label>
+                  <input
+                    type="text"
+                    value={lienCompanyName}
+                    onChange={e => setLienCompanyName(e.target.value)}
+                    placeholder="Optional"
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Lien company email</label>
+                  <input
+                    type="email"
+                    value={lienCompanyEmail}
+                    onChange={e => setLienCompanyEmail(e.target.value)}
+                    placeholder="Optional"
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
               </div>

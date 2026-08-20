@@ -90,6 +90,9 @@ public class Referral : AuditableEntity
     public string? DeclineNotes { get; private set; }
     public DateOnly? DateOfAccident { get; private set; }
     public Guid? TreatmentTypeId { get; private set; }
+    public string Origin { get; private set; } = ReferralOrigin.LawFirm;
+    public string? LienCompanyName { get; private set; }
+    public string? LienCompanyEmail { get; private set; }
 
     // ── Referrer contact (stored at creation for email notifications) ─────
     // "Pending" status in LSCC-005 spec ≡ "New" status in this domain model.
@@ -150,7 +153,10 @@ public class Referral : AuditableEntity
         Guid? treatmentTypeId = null,
         DateOnly? dateOfAccident = null,
         Guid? facilityId = null,
-        Guid? referralAttributionId = null)
+        Guid? referralAttributionId = null,
+        string origin = ReferralOrigin.LawFirm,
+        string? lienCompanyName = null,
+        string? lienCompanyEmail = null)
     {
         var now = DateTime.UtcNow;
 
@@ -188,6 +194,9 @@ public class Referral : AuditableEntity
             Notes                      = notes?.Trim(),
             DateOfAccident             = dateOfAccident,
             TreatmentTypeId            = treatmentTypeId,
+            Origin                     = ReferralOrigin.All.Contains(origin) ? origin : ReferralOrigin.LawFirm,
+            LienCompanyName            = lienCompanyName?.Trim(),
+            LienCompanyEmail           = lienCompanyEmail?.Trim(),
             ReferrerEmail              = referrerEmail?.Trim(),
             ReferrerName               = computedReferrerName,
             ReferrerFirstName          = referrerFirstName?.Trim(),

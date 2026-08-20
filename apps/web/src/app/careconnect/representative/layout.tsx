@@ -1,6 +1,7 @@
 import { headers } from 'next/headers';
 import { resolveTenantFromCode, isProductActiveForTenant } from '@/lib/public-network-api';
 import { RepresentativeAccessCodeGate } from '@/components/careconnect/representative-access-code-gate';
+import { PublicNetworkShell } from '@/components/careconnect/public-network-shell';
 import { RepresentativeShell } from '@/components/shell/representative-shell';
 import { ToastProvider } from '@/lib/toast-context';
 import { ToastContainer } from '@/components/toast-container';
@@ -50,9 +51,11 @@ export default async function RepresentativePortalLayout({ children }: { childre
 
   return (
     <ToastProvider>
-      <RepresentativeAccessCodeGate tenantId={tenant.tenantId}>
-        <RepresentativeShell>{children}</RepresentativeShell>
-      </RepresentativeAccessCodeGate>
+      <PublicNetworkShell tenantId={tenant.tenantId}>
+        <RepresentativeAccessCodeGate tenantId={tenant.tenantId}>
+          <RepresentativeShell>{children}</RepresentativeShell>
+        </RepresentativeAccessCodeGate>
+      </PublicNetworkShell>
       <ToastContainer />
     </ToastProvider>
   );

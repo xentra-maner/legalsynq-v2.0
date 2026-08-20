@@ -10,6 +10,7 @@ export interface SpecialtyOption {
 
 export interface ProviderSummary {
   id:                 string;
+  facilityId?:        string | null;
   name:               string;
   title?:             string | null;
   organizationName?:  string;
@@ -62,6 +63,7 @@ export interface ProviderSearchParams {
 
 export interface ProviderMarker {
   id:                 string;
+  facilityId?:        string | null;
   name:               string;
   title?:             string | null;
   organizationName?:  string;
@@ -178,6 +180,9 @@ export interface ReferralSummary {
   status:            string;
   notes?:            string;
   declineNotes?:     string;
+  origin?:           string;
+  lienCompanyName?:  string | null;
+  lienCompanyEmail?: string | null;
   dateOfAccident?:   string;
   createdAtUtc:      string;
   updatedAtUtc:      string;
@@ -358,6 +363,89 @@ export interface VerifyReferralAttributionAccessCodeResult {
   referralAttributionFullName?:  string | null;
 }
 
+export interface LawFirmOption {
+  id: string;
+  name: string;
+}
+
+export interface TreatmentTypeOption {
+  id: string;
+  name: string;
+}
+
+export interface CreatePendingReferralRequest {
+  lawFirmOrganizationId: string;
+  clientFirstName: string;
+  clientLastName: string;
+  clientDob?: string;
+  clientPhone: string;
+  clientEmail?: string;
+  caseNumber?: string;
+  requestedService?: string;
+  urgency: string;
+  treatmentTypeId?: string;
+  dateOfAccident?: string;
+  recommendedProviderId?: string;
+  recommendedFacilityId?: string;
+  preferredProviders?: PendingReferralProviderPreferenceRequest[];
+  notes?: string;
+  lienCompanyName?: string;
+  lienCompanyEmail?: string;
+}
+
+export interface PendingReferralProviderPreferenceRequest {
+  providerId: string;
+  facilityId?: string | null;
+}
+
+export interface PendingReferralRequest {
+  id: string;
+  tenantId: string;
+  lawFirmOrganizationId: string;
+  lawFirmName?: string | null;
+  referralAttributionId: string;
+  referralAttribution?: ReferralAttributionSummary | null;
+  origin: string;
+  clientFirstName: string;
+  clientLastName: string;
+  clientDob?: string | null;
+  clientPhone: string;
+  clientEmail: string;
+  caseNumber?: string | null;
+  requestedService?: string | null;
+  urgency: string;
+  treatmentTypeId?: string | null;
+  dateOfAccident?: string | null;
+  recommendedProviderId?: string | null;
+  recommendedFacilityId?: string | null;
+  recommendedProviderName?: string | null;
+  recommendedFacilityName?: string | null;
+  preferredProviders: PendingReferralProviderPreference[];
+  notes?: string | null;
+  lienCompanyName?: string | null;
+  lienCompanyEmail?: string | null;
+  status: string;
+  convertedReferralId?: string | null;
+  convertedAtUtc?: string | null;
+  createdAtUtc: string;
+  updatedAtUtc: string;
+}
+
+export interface ConvertPendingReferralRequest {
+  providerId?: string;
+  networkProviderId?: string;
+  facilityId?: string | null;
+}
+
+export interface PendingReferralProviderPreference {
+  id: string;
+  providerId: string;
+  facilityId?: string | null;
+  providerName: string;
+  facilityName?: string | null;
+  displayOrder: number;
+}
+
 // LSCC-005-01 / LSCC-005-02: notification delivery record
 export interface ReferralNotification {
   id:                string;
@@ -420,6 +508,8 @@ export interface CreateReferralRequest {
   treatmentTypeId?:  string;
   dateOfAccident?:   string;
   notes?:            string;
+  lienCompanyName?:  string;
+  lienCompanyEmail?: string;
   referrerScopeSignature?: string;
   /** LSCC-005: referrer identity for the notification email */
   referrerEmail?:    string;
@@ -880,6 +970,7 @@ export interface AddProviderToNetworkRequest {
     postalCode?:         string | null;
     isActive:            boolean;
     acceptingReferrals:  boolean;
+    visibility?:         string | null;
     npi?:                string;
     categoryCodes?:      string[];
     primaryCategoryCode?: string;
@@ -908,6 +999,7 @@ export interface UpdateNetworkProviderRequest {
   postalCode?:         string | null;
   isActive:            boolean;
   acceptingReferrals:  boolean;
+  visibility?:         string | null;
   specialtyIds:        string[];
   latitude?:           number | null;
   longitude?:          number | null;
@@ -950,6 +1042,8 @@ export interface NetworkProviderItem {
   postalCode?:       string | null;
   isActive:          boolean;
   acceptingReferrals: boolean;
+  owningOrganizationId?: string | null;
+  visibility:        string;
   /**
    * Whether the underlying cc_Facilities row is active. Distinct from `isActive` above (the
    * NetworkProvider membership's own Active/Accepting-referrals toggle — an existing,

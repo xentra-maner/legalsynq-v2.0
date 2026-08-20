@@ -20,6 +20,8 @@ public class NetworkProviderConfiguration : IEntityTypeConfiguration<NetworkProv
         builder.Property(np => np.FacilityId).IsRequired();
         builder.Property(np => np.IsActive).IsRequired();
         builder.Property(np => np.AcceptingReferrals).IsRequired();
+        builder.Property(np => np.OwningOrganizationId);
+        builder.Property(np => np.Visibility).IsRequired().HasMaxLength(20).HasDefaultValue(ProviderVisibility.Public);
         builder.Property(np => np.CreatedAtUtc).IsRequired();
         builder.Property(np => np.UpdatedAtUtc).IsRequired();
         builder.Property(np => np.CreatedByUserId);
@@ -38,6 +40,8 @@ public class NetworkProviderConfiguration : IEntityTypeConfiguration<NetworkProv
         // so tenant-scoped network provider list queries would scan all rows for that network.
         builder.HasIndex(np => new { np.TenantId, np.ProviderNetworkId })
                .HasDatabaseName("IX_NetworkProviders_TenantId_ProviderNetworkId");
+        builder.HasIndex(np => new { np.TenantId, np.OwningOrganizationId, np.Visibility })
+               .HasDatabaseName("IX_NetworkProviders_Tenant_OwningOrg_Visibility");
 
         builder.HasOne(np => np.Provider)
                .WithMany()

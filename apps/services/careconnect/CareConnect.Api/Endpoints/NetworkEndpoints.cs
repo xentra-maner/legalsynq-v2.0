@@ -179,7 +179,14 @@ public static class NetworkEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            var provider = await service.AddProviderAsync(tenantId, id, request, ctx.UserId, ct);
+            var provider = await service.AddProviderAsync(
+                tenantId,
+                id,
+                request,
+                ctx.UserId,
+                ct,
+                owningOrganizationId: ctx.OrgId,
+                isTenantAdmin: ctx.IsPlatformAdmin || ctx.Roles.Contains(Roles.TenantAdmin, StringComparer.OrdinalIgnoreCase));
             // BLK-PERF-02: Provider membership changed — evict public provider/marker/detail/list
             // cache entries for this tenant+network so the directory reflects the addition.
             foreach (var key in CareConnectCacheKeys.PublicNetworkInvalidationKeys(tenantId, id))
@@ -212,7 +219,14 @@ public static class NetworkEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            var provider = await service.UpdateProviderAsync(tenantId, id, providerId, request, ctx.UserId, ct);
+            var provider = await service.UpdateProviderAsync(
+                tenantId,
+                id,
+                providerId,
+                request,
+                ctx.UserId,
+                ct,
+                isTenantAdmin: ctx.IsPlatformAdmin || ctx.Roles.Contains(Roles.TenantAdmin, StringComparer.OrdinalIgnoreCase));
 
             foreach (var key in CareConnectCacheKeys.PublicNetworkInvalidationKeys(tenantId, id))
                 cache.Remove(key);

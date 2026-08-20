@@ -143,7 +143,7 @@ export default function RepresentativeReferralsPage() {
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-500">{new Date(item.lastUpdatedAtUtc).toLocaleDateString()}</td>
                     <td className="px-4 py-3 text-right">
-                      <Link href={`/careconnect/representative/referrals/${item.referralId}`} className="text-sm text-primary hover:underline font-medium">
+                      <Link href={`/careconnect/representative/referrals/${item.referralId}`} className="cursor-pointer text-sm text-primary hover:underline font-medium">
                         View →
                       </Link>
                     </td>

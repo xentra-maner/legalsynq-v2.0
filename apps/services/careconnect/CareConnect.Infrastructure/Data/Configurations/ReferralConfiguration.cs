@@ -47,6 +47,9 @@ public class ReferralConfiguration : IEntityTypeConfiguration<Referral>
         builder.Property(r => r.Status).IsRequired().HasMaxLength(20);
         builder.Property(r => r.Notes).HasMaxLength(2000);
         builder.Property(r => r.DeclineNotes).HasMaxLength(2000);
+        builder.Property(r => r.Origin).IsRequired().HasMaxLength(40).HasDefaultValue(ReferralOrigin.LawFirm);
+        builder.Property(r => r.LienCompanyName).HasMaxLength(250);
+        builder.Property(r => r.LienCompanyEmail).HasMaxLength(320);
         builder.Property(r => r.ReferrerFirmName).HasMaxLength(250);
         builder.Property(r => r.ReferrerPhone).HasMaxLength(50);
         builder.Property(r => r.CreatedAtUtc).IsRequired();

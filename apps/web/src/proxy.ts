@@ -90,10 +90,11 @@ const PUBLIC_PATHS = [
   // CC2-INT-B07: Public tenant network directory — no session required
   "/network",
   "/careconnect/network",
-  // Referral Attribution representative portal — anonymous, access-code gated
+  // Referral Portal — anonymous, access-code gated
   // (see apps/web/src/app/careconnect/representative/layout.tsx). The code is
   // re-verified server-side on every request; this only lets the request past
   // the platform_session cookie check so the access-code gate can run.
+  "/careconnect/referral",
   "/careconnect/representative",
   "/api/public/",
   // CC2-ENROLL: Provider self-enrollment form — no session required
@@ -103,6 +104,12 @@ const PUBLIC_PATHS = [
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  if (pathname === "/careconnect/representative" || pathname.startsWith("/careconnect/representative/")) {
+    const url = request.nextUrl.clone();
+    url.pathname = pathname.replace("/careconnect/representative", "/careconnect/referral");
+    return NextResponse.redirect(url);
+  }
+
   const forwardedHost = request.headers.get("x-forwarded-host") ?? "";
   const rawHost = request.headers.get("host") ?? "";
   const incomingHost = (forwardedHost || rawHost)

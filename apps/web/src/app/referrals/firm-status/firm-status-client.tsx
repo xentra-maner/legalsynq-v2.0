@@ -45,6 +45,8 @@ interface ThreadData {
   dateOfAccident?:    string;
   treatmentTypeId?:   string;
   treatmentTypeName?: string;
+  lienCompanyName?:   string | null;
+  lienCompanyEmail?:  string | null;
   createdAtUtc:       string;
   comments:           Comment[];
 }
@@ -310,6 +312,8 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
             <FieldBlock label="Urgency" value={data.urgency ?? '—'} />
             <FieldBlock label="Type of Treatment" value={data.treatmentTypeName ?? '—'} />
             <FieldBlock label="Date of Accident" value={data.dateOfAccident ?? '—'} />
+            {data.lienCompanyName && <FieldBlock label="Lien Company" value={data.lienCompanyName} />}
+            {data.lienCompanyEmail && <FieldBlock label="Lien Company Email" value={data.lienCompanyEmail} />}
           </div>
         </div>
 

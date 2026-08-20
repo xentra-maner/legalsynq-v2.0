@@ -50,6 +50,8 @@ interface ThreadData {
   dateOfAccident?: string;
   treatmentTypeId?: string;
   treatmentTypeName?: string;
+  lienCompanyName?: string | null;
+  lienCompanyEmail?: string | null;
   providerName: string;
   // Referral location — the specific facility this referral was routed to, falling back
   // to the provider's own address for legacy/single-location referrals.
@@ -832,6 +834,20 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
               <FieldBlock label="Email" value={data.referrerEmail} />
             )}
           </div>
+
+          {(data.lienCompanyName || data.lienCompanyEmail) && (
+            <>
+              {/* Divider */}
+              <div style={{ borderTop: '1px solid #e2e8f0', margin: '18px 0' }} />
+
+              {/* Lien company */}
+              <p style={{ margin: '0 0 12px', fontSize: 12, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Lien Company</p>
+              <div style={s.grid2}>
+                {data.lienCompanyName && <FieldBlock label="Name" value={data.lienCompanyName} />}
+                {data.lienCompanyEmail && <FieldBlock label="Email" value={data.lienCompanyEmail} />}
+              </div>
+            </>
+          )}
         </div>
 
         {/* Action Card — status-aware */}

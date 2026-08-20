@@ -103,4 +103,45 @@ describe('GET /api/geocode/address', () => {
     })]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  test('falls back to ZIP centroid lookup for loose ZIP-only searches', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => [] })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          'post code': '90012',
+          places: [{
+            'place name': 'Los Angeles',
+            'state abbreviation': 'CA',
+            latitude: '34.0614',
+            longitude: '-118.2385',
+          }],
+        }),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { GET } = await import('./route');
+    const response = await GET(new NextRequest(
+      'http://localhost/api/geocode/address?q=90012&loose=1',
+    ));
+    const data = await response.json() as Array<{
+      displayName: string;
+      city: string;
+      state: string;
+      postalCode: string;
+      latitude: number;
+      longitude: number;
+    }>;
+
+    expect(data).toEqual([expect.objectContaining({
+      displayName: 'Los Angeles, CA, 90012',
+      city: 'Los Angeles',
+      state: 'CA',
+      postalCode: '90012',
+      latitude: 34.0614,
+      longitude: -118.2385,
+    })]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });

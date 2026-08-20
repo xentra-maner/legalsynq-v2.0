@@ -887,6 +887,17 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
+                            Id = new Guid("60000000-0000-0000-0000-000000000072"),
+                            Category = "Provider",
+                            Code = "SYNQ_CARECONNECT.provider:manage",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Manage organization provider network entries",
+                            IsActive = true,
+                            Name = "Manage Providers",
+                            ProductId = new Guid("10000000-0000-0000-0000-000000000003")
+                        },
+                        new
+                        {
                             Id = new Guid("60000000-0000-0000-0000-000000000009"),
                             Category = "Appointment",
                             Code = "SYNQ_CARECONNECT.appointment:create",
@@ -1598,6 +1609,24 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
+                            Id = new Guid("90000000-0000-0000-0000-000000000013"),
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            IsActive = true,
+                            OrganizationTypeId = new Guid("70000000-0000-0000-0000-000000000002"),
+                            ProductId = new Guid("10000000-0000-0000-0000-000000000003"),
+                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000011")
+                        },
+                        new
+                        {
+                            Id = new Guid("90000000-0000-0000-0000-000000000014"),
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            IsActive = true,
+                            OrganizationTypeId = new Guid("70000000-0000-0000-0000-000000000005"),
+                            ProductId = new Guid("10000000-0000-0000-0000-000000000003"),
+                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000011")
+                        },
+                        new
+                        {
                             Id = new Guid("90000000-0000-0000-0000-000000000003"),
                             CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             IsActive = true,
@@ -1807,6 +1836,16 @@ namespace Identity.Infrastructure.Persistence.Migrations
                             Description = "Provider that receives referrals",
                             IsActive = true,
                             Name = "CareConnect Receiver",
+                            ProductId = new Guid("10000000-0000-0000-0000-000000000003")
+                        },
+                        new
+                        {
+                            Id = new Guid("50000000-0000-0000-0000-000000000011"),
+                            Code = "CARECONNECT_NETWORK_MANAGER",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Organization-scoped manager for CareConnect provider networks",
+                            IsActive = true,
+                            Name = "CareConnect Network Manager",
                             ProductId = new Guid("10000000-0000-0000-0000-000000000003")
                         },
                         new
@@ -2318,6 +2357,21 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         {
                             ProductRoleId = new Guid("50000000-0000-0000-0000-000000000001"),
                             PermissionId = new Guid("60000000-0000-0000-0000-000000000011")
+                        },
+                        new
+                        {
+                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000011"),
+                            PermissionId = new Guid("60000000-0000-0000-0000-000000000007")
+                        },
+                        new
+                        {
+                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000011"),
+                            PermissionId = new Guid("60000000-0000-0000-0000-000000000008")
+                        },
+                        new
+                        {
+                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000011"),
+                            PermissionId = new Guid("60000000-0000-0000-0000-000000000072")
                         },
                         new
                         {
@@ -3369,9 +3423,9 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.HasOne("Identity.Domain.DeviceSession", "DeviceSession")
                         .WithMany()
                         .HasForeignKey("DeviceSessionId")
-                        .HasConstraintName("FK_idt_RTLE_DeviceSession")
                         .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .IsRequired()
+                        .HasConstraintName("FK_idt_RTLE_DeviceSession");
 
                     b.Navigation("DeviceSession");
                 });

@@ -10,6 +10,7 @@ interface ProviderMapProps {
   markers: ProviderMarker[]; selectedId: string | null; onSelect: (id: string) => void;
   onViewportChange: (bounds: ViewportBounds) => void; isReferrer: boolean;
   centerLat?: number; centerLng?: number; defaultZoom?: number;
+  actionLabel?: string; onAction?: (marker: ProviderMarker) => void;
 }
 
 const US_CENTER = { lat: 39.5, lng: -98.35 };
@@ -36,7 +37,7 @@ const MILES_TO_METERS = 1609.34;
 
 export function ProviderMapGoogle({
   markers, selectedId, onSelect, onViewportChange, isReferrer,
-  centerLat, centerLng, defaultZoom = 5,
+  centerLat, centerLng, defaultZoom = 5, actionLabel, onAction,
 }: ProviderMapProps) {
   const isLoaded    = useGoogleMapsScript();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -46,6 +47,14 @@ export function ProviderMapGoogle({
   const ringRefs     = useRef<Map<string, google.maps.Polyline>>(new Map());
   const infoRef      = useRef<google.maps.InfoWindow | null>(null);
   const boundsTimer  = useRef<ReturnType<typeof setTimeout>>();
+  const onSelectRef  = useRef(onSelect);
+  const onViewportChangeRef = useRef(onViewportChange);
+  const actionLabelRef = useRef(actionLabel);
+  const onActionRef = useRef(onAction);
+  onSelectRef.current = onSelect;
+  onViewportChangeRef.current = onViewportChange;
+  actionLabelRef.current = actionLabel;
+  onActionRef.current = onAction;
 
   const center = centerLat != null && centerLng != null
     ? { lat: centerLat, lng: centerLng } : US_CENTER;
@@ -64,7 +73,7 @@ export function ProviderMapGoogle({
       boundsTimer.current = setTimeout(() => {
         const b = map.getBounds();
         if (!b) return;
-        onViewportChange({
+        onViewportChangeRef.current({
           northLat: b.getNorthEast().lat(), southLat: b.getSouthWest().lat(),
           eastLng:  b.getNorthEast().lng(), westLng:  b.getSouthWest().lng(),
         });
@@ -134,24 +143,33 @@ export function ProviderMapGoogle({
           map.panTo({ lat: m.latitude, lng: m.longitude });
           const currentZoom = map.getZoom() ?? 0;
           if (currentZoom < 13) map.setZoom(m.isMobile ? 10 : 13);
-          onSelect(m.id);
+          onSelectRef.current(m.id);
           const locationLine = m.isMobile
             ? `Mobile · ${[m.serviceAreaLabel, `${m.city}, ${m.state}`].filter(Boolean).join(' · ')}${m.serviceRadiusMiles ? ` · ${m.serviceRadiusMiles}mi radius` : ''}`
             : m.markerSubtitle;
-          const content = `
-            <div style="font-family:system-ui,sans-serif;min-width:180px">
-              <p style="font-weight:600;font-size:14px;margin:0 0 2px;color:#111827">${m.displayLabel}</p>
-              <p style="font-size:12px;color:#6b7280;margin:0 0 6px">${locationLine}</p>
-              ${typeof m.distanceMiles === 'number' ? `<p style="font-size:12px;color:#2563eb;margin:0 0 6px">${m.distanceMiles.toFixed(1)} mi away</p>` : ''}
-              ${(m.specialties ?? []).length > 0 ? `<p style="font-size:11px;color:#1d4ed8;margin:0 0 6px">${m.specialties.map(s => s.name).join(', ')}</p>` : ''}
-              ${m.acceptingReferrals
-                ? `<span style="font-size:11px;color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:9999px;padding:2px 8px;display:inline-block;margin-bottom:8px">Accepting referrals</span>`
-                : `<span style="font-size:11px;color:#6b7280;background:#f9fafb;border:1px solid #e5e7eb;border-radius:9999px;padding:2px 8px;display:inline-block;margin-bottom:8px">Not accepting referrals</span>`}
-              <div style="display:flex;flex-direction:column;gap:4px;margin-top:4px">
-                <a href="/careconnect/providers/${m.id}" style="font-size:12px;color:#2563eb;font-weight:500;text-decoration:none">View Provider →</a>
-                ${isReferrer && m.acceptingReferrals ? `<a href="/careconnect/providers/${m.id}" style="font-size:12px;color:#7c3aed;text-decoration:none">Create Referral →</a>` : ''}
-              </div>
+          const content = document.createElement('div');
+          content.style.fontFamily = 'system-ui,sans-serif';
+          content.style.minWidth = '180px';
+          content.innerHTML = `
+            <p style="font-weight:600;font-size:14px;margin:0 0 2px;color:#111827">${m.displayLabel}</p>
+            <p style="font-size:12px;color:#6b7280;margin:0 0 6px">${locationLine}</p>
+            ${typeof m.distanceMiles === 'number' ? `<p style="font-size:12px;color:#2563eb;margin:0 0 6px">${m.distanceMiles.toFixed(1)} mi away</p>` : ''}
+            ${(m.specialties ?? []).length > 0 ? `<p style="font-size:11px;color:#1d4ed8;margin:0 0 6px">${m.specialties.map(s => s.name).join(', ')}</p>` : ''}
+            ${m.acceptingReferrals
+              ? `<span style="font-size:11px;color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:9999px;padding:2px 8px;display:inline-block;margin-bottom:8px">Accepting referrals</span>`
+              : `<span style="font-size:11px;color:#6b7280;background:#f9fafb;border:1px solid #e5e7eb;border-radius:9999px;padding:2px 8px;display:inline-block;margin-bottom:8px">Not accepting referrals</span>`}
+            <div style="display:flex;flex-direction:column;gap:4px;margin-top:4px">
+              <a href="/careconnect/providers/${m.id}" style="font-size:12px;color:#2563eb;font-weight:500;text-decoration:none">View Provider →</a>
+              ${isReferrer && m.acceptingReferrals ? `<a href="/careconnect/providers/${m.id}" style="font-size:12px;color:#7c3aed;text-decoration:none">Create Referral →</a>` : ''}
             </div>`;
+          if (actionLabelRef.current) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.textContent = actionLabelRef.current;
+            button.style.cssText = 'font-size:12px;color:#fff;background:#2563eb;border:none;border-radius:6px;padding:6px 10px;cursor:pointer;font-weight:600;text-align:center;margin-top:4px;width:100%';
+            button.addEventListener('click', () => onActionRef.current?.(m));
+            content.appendChild(button);
+          }
           infoRef.current?.setContent(content);
           infoRef.current?.open({ map, anchor: marker });
         });

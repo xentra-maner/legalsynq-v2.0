@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
 
 export default function RepresentativeRootPage() {
-  redirect('/careconnect/representative/dashboard');
+  redirect('/careconnect/referral/dashboard');
 }

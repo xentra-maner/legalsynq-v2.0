@@ -20,6 +20,8 @@ interface ProviderMapProps {
   centerLat?:        number;
   centerLng?:        number;
   defaultZoom?:      number;
+  actionLabel?:      string;
+  onAction?:         (marker: ProviderMarker) => void;
 }
 
 type L = typeof import('leaflet');
@@ -41,6 +43,8 @@ export function ProviderMapLeaflet({
   centerLat,
   centerLng,
   defaultZoom = 5,
+  actionLabel,
+  onAction,
 }: ProviderMapProps) {
   const containerRef      = useRef<HTMLDivElement>(null);
   const mapRef            = useRef<import('leaflet').Map | null>(null);
@@ -50,9 +54,13 @@ export function ProviderMapLeaflet({
   const onSelectRef          = useRef(onSelect);
   const onViewportChangeRef  = useRef(onViewportChange);
   const isReferrerRef        = useRef(isReferrer);
+  const actionLabelRef       = useRef(actionLabel);
+  const onActionRef          = useRef(onAction);
   onSelectRef.current         = onSelect;
   onViewportChangeRef.current = onViewportChange;
   isReferrerRef.current       = isReferrer;
+  actionLabelRef.current      = actionLabel;
+  onActionRef.current         = onAction;
 
   // ── Init map once on mount ────────────────────────────────────────────────
   useEffect(() => {
@@ -155,8 +163,14 @@ export function ProviderMapLeaflet({
             ? `<a href="/careconnect/providers/${encodeURIComponent(m.id)}" style="font-size:12px;color:#7c3aed;text-decoration:none;display:block">Create Referral →</a>`
             : ''
           }
+          ${actionLabelRef.current
+            ? `<button type="button" data-provider-action style="font-size:12px;color:#fff;background:#2563eb;border:none;border-radius:6px;padding:6px 10px;cursor:pointer;font-weight:600;text-align:center">${esc(actionLabelRef.current)}</button>`
+            : ''
+          }
         </div>
       `;
+      const actionButton = popupEl.querySelector<HTMLButtonElement>('[data-provider-action]');
+      actionButton?.addEventListener('click', () => onActionRef.current?.(m));
 
       if (m.isMobile && m.serviceRadiusMiles) {
         Leaflet.circle([m.latitude, m.longitude], {

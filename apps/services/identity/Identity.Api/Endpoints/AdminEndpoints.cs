@@ -5900,6 +5900,7 @@ public static class AdminEndpoints
         IdentityDbContext db,
         ClaimsPrincipal   caller,
         string            tenantId = "",
+        string            orgType = "",
         CancellationToken ct       = default)
     {
         var isPlatformAdmin = caller.IsInRole("PlatformAdmin");
@@ -5914,8 +5915,13 @@ public static class AdminEndpoints
         }
         else if (!string.IsNullOrWhiteSpace(tenantId) && Guid.TryParse(tenantId, out var filterTid))
         {
-            q = q.Where(o => o.TenantId == filterTid);
+            q = string.Equals(orgType, OrgType.LawFirm, StringComparison.OrdinalIgnoreCase)
+                ? q.Where(o => o.TenantId == filterTid || o.TenantId == null)
+                : q.Where(o => o.TenantId == filterTid);
         }
+
+        if (!string.IsNullOrWhiteSpace(orgType))
+            q = q.Where(o => o.OrgType == orgType);
 
         var items = await q
             .Where(o => o.IsActive)

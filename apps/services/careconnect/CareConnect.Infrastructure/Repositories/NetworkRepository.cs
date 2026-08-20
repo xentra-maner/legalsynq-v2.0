@@ -322,6 +322,13 @@ public class NetworkRepository : INetworkRepository
             .FirstOrDefaultAsync(f => f.TenantId == tenantId && f.Id == facilityId, ct);
     }
 
+    public async Task<Facility?> GetFacilityByIdGlobalAsync(Guid facilityId, CancellationToken ct = default)
+    {
+        return await _db.Facilities
+            .AsNoTracking()
+            .FirstOrDefaultAsync(f => f.Id == facilityId, ct);
+    }
+
     public async Task<Facility?> FindFacilityAsync(
         Guid tenantId,
         string name,

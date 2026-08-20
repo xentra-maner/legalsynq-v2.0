@@ -83,6 +83,7 @@ export function ReferralDetailPanel({ referral, hideHeader = false, timezone }: 
           <Field label="Provider"            value={referral.providerName} />
           <Field label="Provider Location"   value={formatReferralLocation(referral)} />
           <Field label="Requested service"  value={referral.requestedService} />
+          <Field label="Origin"             value={referral.origin === 'ReferralAssociate' ? 'Referral Associate' : 'Law Firm'} />
           <Field label="Urgency"            value={<UrgencyBadge urgency={referral.urgency} />} />
           <Field label="Date of accident"   value={referral.dateOfAccident ? formatDateOnlyField(referral.dateOfAccident) : undefined} />
           <Field label="Type of treatment"  value={referral.treatmentTypeName ?? '—'} />
@@ -96,6 +97,13 @@ export function ReferralDetailPanel({ referral, hideHeader = false, timezone }: 
           <Field label="Created"            value={formatDate(referral.createdAtUtc, resolvedTimezone)} />
           <Field label="Last updated"       value={formatDate(referral.updatedAtUtc, resolvedTimezone)} />
         </Section>
+
+        {(referral.lienCompanyName || referral.lienCompanyEmail) && (
+          <Section title="Lien Company">
+            <Field label="Name" value={referral.lienCompanyName} />
+            <Field label="Email" value={referral.lienCompanyEmail} />
+          </Section>
+        )}
 
         {/* Client / Subject party */}
         <Section title="Client">

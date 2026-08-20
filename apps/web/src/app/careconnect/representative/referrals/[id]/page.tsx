@@ -64,7 +64,7 @@ export default function RepresentativeReferralDetailPage({ params }: PageProps) 
 
   return (
     <div className="space-y-4">
-      <Link href="/careconnect/representative/referrals" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">
+      <Link href="/careconnect/referral/referrals" className="cursor-pointer text-sm text-gray-500 hover:text-gray-800 transition-colors">
         ← Back to My Referrals
       </Link>
 

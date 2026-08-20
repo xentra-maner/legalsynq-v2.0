@@ -44,7 +44,7 @@ export function ReferralAttributionsAdmin() {
   const [portalUrlCopied, setPortalUrlCopied] = useState(false);
 
   useEffect(() => {
-    setPortalUrl(window.location.origin + '/careconnect/representative/dashboard');
+    setPortalUrl(window.location.origin + '/careconnect/referral/dashboard');
   }, []);
 
   async function copyPortalUrl() {
@@ -121,7 +121,7 @@ export function ReferralAttributionsAdmin() {
 
       {portalUrl && (
         <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-gray-400 shrink-0">Representative Portal URL</span>
+          <span className="text-xs font-medium text-gray-400 shrink-0">Referral Portal URL</span>
           <div className="flex items-center gap-1 rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1 min-w-0">
             <i className="ri-link text-gray-400 text-xs shrink-0" />
             <span className="text-xs text-gray-600 font-mono truncate">{portalUrl}</span>

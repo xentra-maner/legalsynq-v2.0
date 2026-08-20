@@ -141,6 +141,10 @@ public interface IIdentityOrganizationService
     Task<string?> GetOrganizationNameAsync(
         Guid              orgId,
         CancellationToken ct = default);
+
+    Task<List<LawFirmOrganizationOption>> ListLawFirmOrganizationsAsync(
+        Guid              tenantId,
+        CancellationToken ct = default);
 }
 
 // ── Result types ───────────────────────────────────────────────────────────────
@@ -168,4 +172,10 @@ public static class ReferrerPortalAccessStatuses
     public const string ActiveInTenant          = "active_in_tenant";
     public const string ExistingUserOtherTenant = "existing_user_other_tenant";
     public const string NoAccount               = "no_account";
+}
+
+public sealed class LawFirmOrganizationOption
+{
+    public Guid Id { get; init; }
+    public string Name { get; init; } = string.Empty;
 }

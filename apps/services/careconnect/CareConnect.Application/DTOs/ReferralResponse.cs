@@ -26,6 +26,9 @@ public class ReferralResponse
     public string Status { get; set; } = string.Empty;
     public string? Notes { get; set; }
     public string? DeclineNotes { get; set; }
+    public string Origin { get; set; } = string.Empty;
+    public string? LienCompanyName { get; set; }
+    public string? LienCompanyEmail { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     public DateTime UpdatedAtUtc { get; set; }
 

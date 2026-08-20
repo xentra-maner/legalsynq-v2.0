@@ -37,6 +37,7 @@ public interface INetworkRepository
     Task<HashSet<Guid>> GetNetworkProviderIdsAsync(Guid tenantId, Guid networkId, CancellationToken ct = default);
     Task<HashSet<string>> GetNetworkProviderLocationKeysAsync(Guid tenantId, Guid networkId, CancellationToken ct = default);
     Task<Facility?> GetFacilityByIdAsync(Guid tenantId, Guid facilityId, CancellationToken ct = default);
+    Task<Facility?> GetFacilityByIdGlobalAsync(Guid facilityId, CancellationToken ct = default);
     Task<Facility?> FindFacilityAsync(Guid tenantId, string name, string addressLine1, string city, string state, string? postalCode, CancellationToken ct = default);
     Task AddFacilityAsync(Facility facility, CancellationToken ct = default);
     Task UpdateFacilityAsync(Facility facility, CancellationToken ct = default);

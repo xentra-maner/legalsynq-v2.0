@@ -118,6 +118,8 @@ public class ProviderRepository : IProviderRepository
                 .ThenInclude(pc => pc.Category)
             .Include(p => p.ProviderSpecialties)
                 .ThenInclude(ps => ps.Specialty)
+            .Include(p => p.ProviderFacilities)
+                .ThenInclude(pf => pf.Facility)
             .FirstOrDefaultAsync(ct);
     }
 
@@ -187,6 +189,8 @@ public class ProviderRepository : IProviderRepository
                 .ThenInclude(pc => pc.Category)
             .Include(p => p.ProviderSpecialties)
                 .ThenInclude(ps => ps.Specialty)
+            .Include(p => p.ProviderFacilities)
+                .ThenInclude(pf => pf.Facility)
             .FirstOrDefaultAsync(ct);
     }
 

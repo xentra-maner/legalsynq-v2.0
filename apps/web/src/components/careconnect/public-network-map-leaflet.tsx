@@ -6,6 +6,9 @@ import type { PublicProviderMarker } from '@/lib/public-network-api';
 
 interface NumberedMarker extends PublicProviderMarker {
   index: number;
+  phone?: string | null;
+  addressLine1?: string | null;
+  postalCode?: string | null;
 }
 
 interface SearchLocationMarker {
@@ -23,6 +26,7 @@ interface PublicNetworkMapProps {
   hideSearchMarker?: boolean;
   onSelect:          (id: string) => void;
   onRequestReferral: (m: PublicProviderMarker) => void;
+  requestReferralLabel?: string;
 }
 
 type L = typeof import('leaflet');
@@ -59,7 +63,7 @@ function makeSearchPinHtml(): string {
   return '<div style="width:30px;height:30px;background:#2563eb;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center"><div style="width:9px;height:9px;background:#fff;border-radius:50%"></div></div>';
 }
 
-function buildPopupEl(m: NumberedMarker, onReferral: (m: NumberedMarker) => void): HTMLDivElement {
+function buildPopupEl(m: NumberedMarker, onReferral: (m: NumberedMarker) => void, requestReferralLabel: string): HTMLDivElement {
   const el = document.createElement('div');
   const identity = getProviderIdentity(m);
   const facilityName = m.facilityName?.trim() ?? '';
@@ -79,13 +83,14 @@ function buildPopupEl(m: NumberedMarker, onReferral: (m: NumberedMarker) => void
     <p style="font-size:12px;color:#9ca3af;margin:0 0 8px">${m.isMobile
       ? `Mobile · ${[m.serviceAreaLabel, `${m.city}, ${m.state}`].filter((s): s is string => Boolean(s)).map(esc).join(' · ')}${m.serviceRadiusMiles ? ` · ${m.serviceRadiusMiles}mi radius` : ''}`
       : `${esc(m.city)}, ${esc(m.state)}`}</p>
+    ${m.phone ? `<p style="font-size:12px;color:#6b7280;margin:0 0 8px">${esc(m.phone)}</p>` : ''}
     ${typeof m.distanceMiles === 'number' ? `<p style="font-size:12px;color:#2563eb;margin:0 0 8px;font-weight:600">${m.distanceMiles.toFixed(1)} mi away</p>` : ''}
     ${(m.specialties ?? []).length > 0 ? `<p style="font-size:11px;color:#1d4ed8;margin:0 0 8px">${esc(m.specialties.map(s => s.name).join(', '))}</p>` : ''}
     ${m.acceptingReferrals
       ? `<span style="font-size:11px;color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:9999px;padding:2px 8px;display:inline-block;margin-bottom:10px">Accepting referrals</span>`
       : `<span style="font-size:11px;color:#6b7280;background:#f9fafb;border:1px solid #e5e7eb;border-radius:9999px;padding:2px 8px;display:inline-block;margin-bottom:10px">Not accepting referrals</span>`
     }
-    ${m.acceptingReferrals ? `<button style="font-size:12px;color:#fff;background:#dc2626;border:none;border-radius:6px;padding:6px 14px;cursor:pointer;font-weight:600;display:block;width:100%">Send Referral</button>` : ''}
+    ${m.acceptingReferrals ? `<button style="font-size:12px;color:#fff;background:#dc2626;border:none;border-radius:6px;padding:6px 14px;cursor:pointer;font-weight:600;display:block;width:100%">${esc(requestReferralLabel)}</button>` : ''}
   `;
   if (m.acceptingReferrals) {
     const btn = el.querySelector<HTMLButtonElement>('button');
@@ -94,7 +99,7 @@ function buildPopupEl(m: NumberedMarker, onReferral: (m: NumberedMarker) => void
   return el;
 }
 
-export function PublicNetworkMapLeaflet({ markers, selectedId, zoomToId, onZoomed, searchLocation, hideSearchMarker = false, onSelect, onRequestReferral }: PublicNetworkMapProps) {
+export function PublicNetworkMapLeaflet({ markers, selectedId, zoomToId, onZoomed, searchLocation, hideSearchMarker = false, onSelect, onRequestReferral, requestReferralLabel = 'Send Referral' }: PublicNetworkMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef       = useRef<import('leaflet').Map | null>(null);
   const layerRef     = useRef<import('leaflet').LayerGroup | null>(null);
@@ -198,7 +203,7 @@ export function PublicNetworkMapLeaflet({ markers, selectedId, zoomToId, onZoome
 
       Leaflet
         .marker([m.latitude, m.longitude], { icon, zIndexOffset: sel ? 1000 : 0 })
-        .bindPopup(buildPopupEl(m, mk => onReferralRef.current(mk)), { minWidth: 220, closeButton: false })
+        .bindPopup(buildPopupEl(m, mk => onReferralRef.current(mk), requestReferralLabel), { minWidth: 220, closeButton: false })
         .on('click', () => {
           map.setView([m.latitude, m.longitude], Math.max(map.getZoom(), 13));
           onSelectRef.current(m.id);
@@ -231,7 +236,7 @@ export function PublicNetworkMapLeaflet({ markers, selectedId, zoomToId, onZoome
           { padding: [40, 40] },
         );
       }
-    }    })();  }, [markers, selectedId, searchLocation, hideSearchMarker]);
+    }    })();  }, [markers, selectedId, searchLocation, hideSearchMarker, requestReferralLabel]);
 
   // ── Zoom to an externally commanded provider (e.g. card click in split view) ─
   useEffect(() => {
@@ -245,6 +250,16 @@ export function PublicNetworkMapLeaflet({ markers, selectedId, zoomToId, onZoome
       onZoomedRef.current?.();
     }
   }, [zoomToId]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    const map = mapRef.current;
+    if (!map) return;
+    const m = markersRef.current.find(mk => mk.id === selectedId);
+    if (m) {
+      map.setView([m.latitude, m.longitude], Math.max(map.getZoom(), 13));
+    }
+  }, [selectedId]);
 
   // isolation:isolate creates a stacking context that scopes Leaflet's internal
   // z-indexes (200–800) so they cannot bleed above fixed overlays/modals.

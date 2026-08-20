@@ -607,6 +607,8 @@ public static class PublicNetworkEndpoints
                 ReferralAttributionId   = req.ReferralAttributionId,
                 DateOfAccident          = req.PatientDateOfAccident,
                 Notes                   = string.IsNullOrWhiteSpace(req.Notes) ? null : req.Notes.Trim(),
+                LienCompanyName         = req.LienCompanyName?.Trim(),
+                LienCompanyEmail        = req.LienCompanyEmail?.Trim(),
                 ReferrerFirstName       = req.SenderFirstName.Trim(),
                 ReferrerLastName        = req.SenderLastName?.Trim(),
                 ReferrerFirmName        = req.SenderFirmName?.Trim(),

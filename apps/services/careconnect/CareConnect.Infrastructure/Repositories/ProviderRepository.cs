@@ -196,10 +196,8 @@ public class ProviderRepository : IProviderRepository
 
     private IQueryable<Provider> BuildBaseQuery(Guid tenantId, GetProvidersQuery query)
     {
-        // Providers are a platform-wide marketplace; all active providers from all tenants
-        // are discoverable. The tenantId parameter is retained for future analytics/audit use.
         // BLK-PERF-01: AsNoTracking on base query — all search/marker flows are read-only.
-        var q = _db.Providers.AsNoTracking().AsQueryable();
+        var q = _db.Providers.AsNoTracking().Where(p => p.TenantId == tenantId).AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(query.Name))
         {

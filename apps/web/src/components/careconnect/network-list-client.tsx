@@ -4,13 +4,21 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { careConnectApi } from '@/lib/careconnect-api';
+import { FormModal } from '@/components/ui/modal';
+import { networkDisplayName } from '@/lib/network-display-name';
 import type { NetworkSummary } from '@/types/careconnect';
 
 interface NetworkListClientProps {
   initialNetworks: NetworkSummary[];
+  /** LSV3-1084: tenant display name used for the "{tenantName} Preferred Providers" row label. */
+  tenantName: string;
+  /** True for NetworkManager / TenantAdmin / PlatformAdmin — can rename/delete any network. */
+  canManageAll: boolean;
+  /** The caller's own organization id — a CareConnectReferrerAdmin without canManageAll may only rename/delete a network their org created. */
+  callerOrgId?: string | null;
 }
 
-export function NetworkListClient({ initialNetworks }: NetworkListClientProps) {
+export function NetworkListClient({ initialNetworks, tenantName, canManageAll, callerOrgId }: NetworkListClientProps) {
   const router = useRouter();
   const [networks, setNetworks] = useState<NetworkSummary[]>(initialNetworks);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -43,8 +51,7 @@ export function NetworkListClient({ initialNetworks }: NetworkListClientProps) {
     setError(null);
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSubmit() {
     if (!formName.trim()) {
       setError('Network name is required.');
       return;
@@ -87,73 +94,64 @@ export function NetworkListClient({ initialNetworks }: NetworkListClientProps) {
     }
   }
 
+  const tenantNetworks = networks.filter(n => !n.owningOrganizationId);
+  const orgNetworks = networks.filter(n => n.owningOrganizationId);
+
   return (
-    <div>
+    <div className="space-y-4">
       {/* Toolbar */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between">
         <p className="text-sm text-gray-600">
           {networks.length === 0 ? 'No networks yet.' : `${networks.length} network${networks.length === 1 ? '' : 's'}`}
         </p>
         <button
           onClick={openCreate}
-          className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 cursor-pointer"
         >
           <i className="ri-add-line" />
           New Network
         </button>
       </div>
 
-      {/* Inline form */}
-      {showCreateForm && (
-        <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
-          <h2 className="text-sm font-semibold text-gray-900 mb-3">
-            {editingId ? 'Edit Network' : 'New Network'}
-          </h2>
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Name *</label>
-              <input
-                type="text"
-                value={formName}
-                onChange={e => setFormName(e.target.value)}
-                maxLength={200}
-                placeholder="e.g. Southern California PT Network"
-                className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Description</label>
-              <textarea
-                value={formDescription}
-                onChange={e => setFormDescription(e.target.value)}
-                rows={2}
-                maxLength={1000}
-                placeholder="Optional description..."
-                className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-              />
-            </div>
-            {error && (
-              <p className="text-xs text-red-600">{error}</p>
-            )}
-            <div className="flex gap-2 pt-1">
-              <button
-                type="submit"
-                disabled={saving}
-                className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-              >
-                {saving ? 'Saving…' : editingId ? 'Update' : 'Create'}
-              </button>
-              <button
-                type="button"
-                onClick={cancelForm}
-                className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
+      {/* New/Edit Network modal */}
+      <FormModal
+        open={showCreateForm}
+        onClose={cancelForm}
+        onSubmit={handleSubmit}
+        title={editingId ? 'Edit Network' : 'New Network'}
+        submitLabel={editingId ? 'Update' : 'Create'}
+        submitDisabled={!formName.trim()}
+        loading={saving}
+        size="sm"
+      >
+        <form onSubmit={e => { e.preventDefault(); handleSubmit(); }} className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Name *</label>
+            <input
+              type="text"
+              value={formName}
+              onChange={e => setFormName(e.target.value)}
+              maxLength={200}
+              placeholder="e.g. Southern California PT Network"
+              className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Description</label>
+            <textarea
+              value={formDescription}
+              onChange={e => setFormDescription(e.target.value)}
+              rows={2}
+              maxLength={1000}
+              placeholder="Optional description..."
+              className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+          {error && (
+            <p className="text-xs text-red-600">{error}</p>
+          )}
+        </form>
+      </FormModal>
 
       {/* Network list */}
       {networks.length === 0 && !showCreateForm ? (
@@ -162,56 +160,129 @@ export function NetworkListClient({ initialNetworks }: NetworkListClientProps) {
           <p className="mt-2 text-sm text-gray-500">No networks yet. Create one to group providers.</p>
           <button
             onClick={openCreate}
-            className="mt-4 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            className="mt-4 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 cursor-pointer"
           >
             Create First Network
           </button>
         </div>
       ) : (
-        <div className="divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white overflow-hidden">
-          {networks.map(network => (
-            <div key={network.id} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors">
-              <div className="min-w-0 flex-1">
-                <Link
-                  href={`/careconnect/networks/${network.id}`}
-                  className="block font-medium text-gray-900 hover:text-blue-600 truncate"
-                >
-                  {network.name}
-                </Link>
-                {network.description && (
-                  <p className="text-sm text-gray-500 truncate">{network.description}</p>
-                )}
-                <p className="text-xs text-gray-400 mt-0.5">
-                  {network.providerCount} provider{network.providerCount === 1 ? '' : 's'}
-                </p>
-              </div>
-              <div className="flex items-center gap-2 ml-4">
-                <button
-                  onClick={() => router.push(`/careconnect/networks/${network.id}`)}
-                  className="text-xs text-blue-600 hover:underline"
-                >
-                  Manage
-                </button>
-                <button
-                  onClick={() => openEdit(network)}
-                  className="text-xs text-gray-500 hover:text-gray-700"
-                  title="Edit network"
-                >
-                  <i className="ri-edit-line" />
-                </button>
-                <button
-                  onClick={() => handleDelete(network.id)}
-                  disabled={deletingId === network.id}
-                  className="text-xs text-red-500 hover:text-red-700 disabled:opacity-40"
-                  title="Delete network"
-                >
-                  <i className="ri-delete-bin-line" />
-                </button>
-              </div>
-            </div>
-          ))}
+        <div className="space-y-6">
+          {tenantNetworks.length > 0 && (
+            <NetworkSection
+              icon="ri-building-4-line"
+              label="Tenant Provider Network"
+              description="Shared network managed by the tenant admin."
+              networks={tenantNetworks}
+              tenantName={tenantName}
+              canManageAll={canManageAll}
+              callerOrgId={callerOrgId}
+              router={router}
+              openEdit={openEdit}
+              handleDelete={handleDelete}
+              deletingId={deletingId}
+            />
+          )}
+          {orgNetworks.length > 0 && (
+            <NetworkSection
+              icon="ri-briefcase-4-line"
+              label="Law Firm Provider Networks"
+              description="Networks created and managed by your own organization."
+              networks={orgNetworks}
+              tenantName={tenantName}
+              canManageAll={canManageAll}
+              callerOrgId={callerOrgId}
+              router={router}
+              openEdit={openEdit}
+              handleDelete={handleDelete}
+              deletingId={deletingId}
+            />
+          )}
         </div>
       )}
+    </div>
+  );
+}
+
+function NetworkSection({
+  icon,
+  label,
+  description,
+  networks,
+  tenantName,
+  canManageAll,
+  callerOrgId,
+  router,
+  openEdit,
+  handleDelete,
+  deletingId,
+}: {
+  icon: string;
+  label: string;
+  description: string;
+  networks: NetworkSummary[];
+  tenantName: string;
+  canManageAll: boolean;
+  callerOrgId?: string | null;
+  router: ReturnType<typeof useRouter>;
+  openEdit: (network: NetworkSummary) => void;
+  handleDelete: (id: string) => void;
+  deletingId: string | null;
+}) {
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-2">
+        <i className={`${icon} text-gray-400 text-base`} />
+        <h2 className="text-sm font-semibold text-gray-700">{label}</h2>
+        <span className="text-xs text-gray-400">({networks.length})</span>
+      </div>
+      <p className="text-xs text-gray-400 mb-2">{description}</p>
+      <div className="divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white overflow-hidden">
+        {networks.map(network => (
+          <div key={network.id} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors">
+            <div className="min-w-0 flex-1">
+              <Link
+                href={`/careconnect/networks/${network.id}`}
+                className="block font-medium text-gray-900 hover:text-blue-600 truncate"
+              >
+                {networkDisplayName(network, tenantName)}
+              </Link>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {network.providerCount} provider{network.providerCount === 1 ? '' : 's'}
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5 ml-4">
+              <button
+                onClick={() => router.push(`/careconnect/networks/${network.id}`)}
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-gray-200 px-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 cursor-pointer"
+                title="Manage network"
+              >
+                <i className="ri-settings-4-line text-sm" />
+                Manage
+              </button>
+              {(canManageAll ||
+                (!!callerOrgId && network.owningOrganizationId === callerOrgId)) && (
+                <>
+                  <button
+                    onClick={() => openEdit(network)}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700 cursor-pointer"
+                    title="Edit network"
+                  >
+                    <i className="ri-edit-line text-sm" />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(network.id)}
+                    disabled={deletingId === network.id}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-200 text-red-500 hover:bg-red-50 hover:border-red-300 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                    title="Delete network"
+                  >
+                    <i className="ri-delete-bin-line text-sm" />
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

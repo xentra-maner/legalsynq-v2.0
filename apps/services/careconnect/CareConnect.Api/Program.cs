@@ -1053,6 +1053,13 @@ static async Task EnsureSchemaObjectsAsync(
         }
     }
 
+    // ── LSV3-1084: ProviderNetwork.OwningOrganizationId ────────────────────
+    // Networks created before CareConnectReferrerAdmin existed have no owner and are
+    // treated as tenant-admin-owned (view-only for a ReferrerAdmin without NetworkManager).
+    if (!await ColumnExists("cc_ProviderNetworks", "OwningOrganizationId"))
+        if (await Exec("ALTER TABLE `cc_ProviderNetworks` ADD COLUMN `OwningOrganizationId` char(36) COLLATE ascii_general_ci NULL",
+            "cc_ProviderNetworks.OwningOrganizationId")) applied++;
+
     logger.LogInformation("EnsureSchemaObjects: {Count} DDL change(s) applied.", applied);
 
     // Close the connection so that EF Core's Migrate() can manage its own

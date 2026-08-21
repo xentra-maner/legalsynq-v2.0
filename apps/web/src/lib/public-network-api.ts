@@ -52,10 +52,11 @@ function publicHeaders(tenantId: string): Record<string, string> {
 }
 
 export interface PublicNetworkSummary {
-  id:            string;
-  name:          string;
-  description:   string;
-  providerCount: number;
+  id:                    string;
+  name:                  string;
+  description:           string;
+  providerCount:         number;
+  owningOrganizationId?: string | null;
 }
 
 export interface PublicSpecialtyOption {
@@ -237,11 +238,16 @@ export async function isProductActiveForTenant(
 
 /**
  * Fetches all networks for the given tenant (by GUID).
+ * organizationId, when provided, additionally includes that organization's own
+ * (law-firm-owned) network alongside the tenant-owned ones — omitting it returns
+ * tenant-owned networks only.
  */
 export async function fetchPublicNetworks(
   tenantId: string,
+  organizationId?: string,
 ): Promise<PublicNetworkSummary[]> {
-  const url = `${GATEWAY_URL}/careconnect/api/public/network`;
+  const qs = organizationId ? `?organizationId=${encodeURIComponent(organizationId)}` : "";
+  const url = `${GATEWAY_URL}/careconnect/api/public/network${qs}`;
 
   let res: Response;
   try {

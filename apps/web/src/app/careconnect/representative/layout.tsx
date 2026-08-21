@@ -52,7 +52,7 @@ export default async function RepresentativePortalLayout({ children }: { childre
   return (
     <ToastProvider>
       <PublicNetworkShell tenantId={tenant.tenantId}>
-        <RepresentativeAccessCodeGate tenantId={tenant.tenantId}>
+        <RepresentativeAccessCodeGate tenantId={tenant.tenantId} tenantDisplayName={tenant.displayName}>
           <RepresentativeShell>{children}</RepresentativeShell>
         </RepresentativeAccessCodeGate>
       </PublicNetworkShell>

@@ -768,7 +768,8 @@ public class AuthService : IAuthService
 
         return careConnectRoles.All(role =>
             string.Equals(role, ProductRoleCodes.CareConnectReceiver, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(role, ProductRoleCodes.CareConnectReferrer, StringComparison.OrdinalIgnoreCase));
+            string.Equals(role, ProductRoleCodes.CareConnectReferrer, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(role, ProductRoleCodes.CareConnectReferrerAdmin, StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool IsEligibleForSynqLienFundingPortal(

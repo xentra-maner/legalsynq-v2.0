@@ -10,12 +10,20 @@ public class ProviderNetwork : AuditableEntity
     public string Name        { get; private set; } = string.Empty;
     public string Description { get; private set; } = string.Empty;
     public bool   IsDeleted   { get; private set; }
+    /// <summary>
+    /// LSV3-1084: the organization that created this network. Null for networks created
+    /// before this field existed (treated as tenant-admin-owned — every existing network
+    /// predates CareConnectReferrerAdmin). A CareConnectReferrerAdmin caller without the
+    /// NetworkManager role or a system admin role may only rename/delete a network they
+    /// created themselves.
+    /// </summary>
+    public Guid?  OwningOrganizationId { get; private set; }
 
     public List<NetworkProvider> NetworkProviders { get; private set; } = new();
 
     private ProviderNetwork() { }
 
-    public static ProviderNetwork Create(Guid tenantId, string name, string description)
+    public static ProviderNetwork Create(Guid tenantId, string name, string description, Guid? owningOrganizationId = null)
     {
         return new ProviderNetwork
         {
@@ -24,6 +32,7 @@ public class ProviderNetwork : AuditableEntity
             Name        = name.Trim(),
             Description = description.Trim(),
             IsDeleted   = false,
+            OwningOrganizationId = owningOrganizationId,
         };
     }
 

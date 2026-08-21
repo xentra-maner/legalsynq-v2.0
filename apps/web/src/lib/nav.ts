@@ -45,6 +45,9 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
         // Lien company network management — visible to network managers AND to
         // any TenantAdmin at a LIEN_OWNER org (covers the case where the admin
         // hasn't been explicitly granted the NetworkManager product role yet).
+        // Not shown to CareConnectReferrerAdmin (LSV3-1084): the underlying
+        // network isn't yet scoped by owning organization on the read side, so
+        // a law-firm-scoped admin would see/manage the whole tenant's network.
         {
           href: "/careconnect/my-network",
           label: "My Network",
@@ -57,7 +60,7 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
           href: "/careconnect/networks",
           label: "Networks",
           icon: "ri-share-forward-2-line",
-          requiredRoles: [ProductRole.CareConnectNetworkManager],
+          requiredRoles: [ProductRole.CareConnectNetworkManager, ProductRole.CareConnectReferrerAdmin],
           hiddenForOrgTypes: [OrgType.LienOwner],
         },
         // Referral Attribution configuration — tenant admin only. Tenant-portal

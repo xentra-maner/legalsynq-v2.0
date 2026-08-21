@@ -32,6 +32,8 @@ export const ProductRole = {
   CareConnectReceiver: "SYNQ_CARECONNECT:CARECONNECT_RECEIVER",
   // CC2-INT-B06: role-based network management (not orgType-based)
   CareConnectNetworkManager: "SYNQ_CARECONNECT:CARECONNECT_NETWORK_MANAGER",
+  // LSV3-1084: law-firm-scoped network self-management
+  CareConnectReferrerAdmin: "SYNQ_CARECONNECT:CARECONNECT_REFERRER_ADMIN",
   // SynqFund (product code: SYNQ_FUND)
   SynqFundReferrer: "SYNQ_FUND:SYNQFUND_REFERRER",
   SynqFundFunder: "SYNQ_FUND:SYNQFUND_FUNDER",

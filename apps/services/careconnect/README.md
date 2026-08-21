@@ -170,6 +170,20 @@ Normal referrals now include immutable `Origin` (`LawFirm` for direct law-firm s
 (`Private` or `Public`); non-admin-created entries default to private, and only tenant/platform admins
 may make a provider public.
 
+LSV3-1084: editing or removing a network provider (`PUT`/`DELETE /api/networks/{id}/providers/{providerId}`)
+is further restricted by `OwningOrganizationId` — a caller holding only `CARECONNECT_REFERRER_ADMIN` (not
+`CARECONNECT_NETWORK_MANAGER`, and not a tenant/platform admin) may only edit or remove providers their own
+organization added; any other provider in the network is view-only for them. NetworkManager and system
+admin callers are unrestricted, as before.
+
+The `ProviderNetwork` entity itself also carries `OwningOrganizationId` (added via the
+`EnsureSchemaObjects` runtime schema-repair path in `CareConnect.Api/Program.cs`, not a classic EF
+migration — see that file's comments for why). The same rule applies to renaming/deleting a network
+(`PUT`/`DELETE /api/networks/{id}`): a `CARECONNECT_REFERRER_ADMIN`-only caller may only rename or
+delete a network their own organization created via `POST /api/networks`; every network that predates
+this field has `OwningOrganizationId = NULL` and is treated as tenant-admin-owned (view-only for such
+callers). NetworkManager and system admin callers are unrestricted.
+
 ### Provider specialties
 
 CareConnect has a global Specialty catalog that is separate from legacy provider categories. Categories remain in the
@@ -340,6 +354,8 @@ Clients should open files only through signed URL endpoints:
 |---|---|
 | `CARECONNECT_REFERRER` | Send referrals, find providers, book appointments |
 | `CARECONNECT_RECEIVER` | Receive referrals, manage appointments, manage availability |
+| `CARECONNECT_NETWORK_MANAGER` | Manage a tenant's own provider network (role-based, not orgType-based — assignable to Lien Owner and Law Firm orgs) |
+| `CARECONNECT_REFERRER_ADMIN` | Law-firm-scoped equivalent of `CARECONNECT_NETWORK_MANAGER` — same network/provider CRUD, but assignable to Law Firm orgs only (LSV3-1084) |
 
 ## Database
 

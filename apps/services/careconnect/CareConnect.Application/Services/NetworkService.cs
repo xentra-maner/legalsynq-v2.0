@@ -38,13 +38,18 @@ public class NetworkService : INetworkService
     {
         var networks = await _networks.GetAllByTenantAsync(tenantId, ct);
 
-        var tasks = networks.Select(async n =>
+        // Sequential, not Task.WhenAll: all these calls share a single scoped DbContext,
+        // which EF Core does not support running concurrently (throws "A second operation
+        // was started on this context instance before a previous operation completed" as
+        // soon as a tenant has more than one network).
+        var summaries = new List<NetworkSummaryResponse>(networks.Count);
+        foreach (var n in networks)
         {
             var detail = await _networks.GetWithProvidersAsync(tenantId, n.Id, ct);
-            return ToSummary(n, detail?.NetworkProviders.Count ?? 0);
-        });
+            summaries.Add(ToSummary(n, detail?.NetworkProviders.Count(IsActiveMembership) ?? 0));
+        }
 
-        return (await Task.WhenAll(tasks)).ToList();
+        return summaries;
     }
 
     public async Task<NetworkDetailResponse> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
@@ -56,7 +61,8 @@ public class NetworkService : INetworkService
     }
 
     public async Task<NetworkSummaryResponse> CreateAsync(
-        Guid tenantId, Guid? userId, CreateNetworkRequest request, CancellationToken ct = default)
+        Guid tenantId, Guid? userId, CreateNetworkRequest request, CancellationToken ct = default,
+        Guid? owningOrganizationId = null)
     {
         ValidateName(request.Name);
 
@@ -64,7 +70,7 @@ public class NetworkService : INetworkService
             throw new ValidationException("Duplicate network name.",
                 new() { ["name"] = [$"A network named '{request.Name.Trim()}' already exists."] });
 
-        var network = ProviderNetwork.Create(tenantId, request.Name, request.Description ?? string.Empty);
+        var network = ProviderNetwork.Create(tenantId, request.Name, request.Description ?? string.Empty, owningOrganizationId);
         await _networks.AddAsync(network, ct);
         await _networks.SaveChangesAsync(ct);
 
@@ -74,12 +80,19 @@ public class NetworkService : INetworkService
     }
 
     public async Task<NetworkSummaryResponse> UpdateAsync(
-        Guid tenantId, Guid id, Guid? userId, UpdateNetworkRequest request, CancellationToken ct = default)
+        Guid tenantId, Guid id, Guid? userId, UpdateNetworkRequest request, CancellationToken ct = default,
+        bool isTenantAdmin = false, Guid? callerOrgId = null, bool isNetworkManager = false)
     {
         ValidateName(request.Name);
 
         var network = await _networks.GetWithProvidersAsync(tenantId, id, ct)
             ?? throw new NotFoundException($"Network {id} not found.");
+
+        // LSV3-1084: a CareConnectReferrerAdmin (law-firm-scoped) caller may only rename a
+        // network their own organization created — a NetworkManager or system admin can
+        // rename any network in the tenant regardless of who created it.
+        if (!isTenantAdmin && !isNetworkManager && network.OwningOrganizationId != callerOrgId)
+            throw new ForbiddenException("You can only edit a network your organization created.");
 
         if (await _networks.NameExistsAsync(tenantId, request.Name.Trim(), excludeId: id, ct: ct))
             throw new ValidationException("Duplicate network name.",
@@ -88,13 +101,17 @@ public class NetworkService : INetworkService
         network.Update(request.Name, request.Description ?? string.Empty);
         await _networks.SaveChangesAsync(ct);
 
-        return ToSummary(network, network.NetworkProviders.Count);
+        return ToSummary(network, network.NetworkProviders.Count(IsActiveMembership));
     }
 
-    public async Task DeleteAsync(Guid tenantId, Guid id, CancellationToken ct = default)
+    public async Task DeleteAsync(Guid tenantId, Guid id, CancellationToken ct = default,
+        bool isTenantAdmin = false, Guid? callerOrgId = null, bool isNetworkManager = false)
     {
         var network = await _networks.GetByIdAsync(tenantId, id, ct)
             ?? throw new NotFoundException($"Network {id} not found.");
+
+        if (!isTenantAdmin && !isNetworkManager && network.OwningOrganizationId != callerOrgId)
+            throw new ForbiddenException("You can only delete a network your organization created.");
 
         network.Delete();
         await _networks.SaveChangesAsync(ct);
@@ -498,13 +515,20 @@ public class NetworkService : INetworkService
     }
 
     public async Task RemoveProviderAsync(
-        Guid tenantId, Guid networkId, Guid providerId, bool cascadeFacility, Guid? userId, CancellationToken ct = default)
+        Guid tenantId, Guid networkId, Guid providerId, bool cascadeFacility, Guid? userId, CancellationToken ct = default,
+        bool isTenantAdmin = false, Guid? callerOrgId = null, bool isNetworkManager = false)
     {
         _ = await _networks.GetByIdAsync(tenantId, networkId, ct)
             ?? throw new NotFoundException($"Network {networkId} not found.");
 
         var entry = await _networks.GetMembershipByIdOrProviderAsync(networkId, providerId, ct)
             ?? throw new NotFoundException($"Provider or network membership {providerId} is not a member of network {networkId}.");
+
+        // LSV3-1084: a CareConnectReferrerAdmin (law-firm-scoped) caller may only remove
+        // providers their own organization added — a NetworkManager or system admin can
+        // remove any provider in the network regardless of who added it.
+        if (!isTenantAdmin && !isNetworkManager && entry.OwningOrganizationId != callerOrgId)
+            throw new ForbiddenException("You can only remove providers your organization added to this network.");
 
         entry.UpdateStatus(isActive: false, acceptingReferrals: false);
 
@@ -588,13 +612,21 @@ public class NetworkService : INetworkService
         UpdateNetworkProviderRequest request,
         Guid? userId,
         CancellationToken ct = default,
-        bool isTenantAdmin = false)
+        bool isTenantAdmin = false,
+        Guid? callerOrgId = null,
+        bool isNetworkManager = false)
     {
         _ = await _networks.GetByIdAsync(tenantId, networkId, ct)
             ?? throw new NotFoundException($"Network {networkId} not found.");
 
         var membership = await _networks.GetMembershipByIdOrProviderAsync(networkId, providerId, ct)
             ?? throw new NotFoundException($"Provider or network membership {providerId} is not a member of network {networkId}.");
+
+        // LSV3-1084: a CareConnectReferrerAdmin (law-firm-scoped) caller may only edit
+        // providers their own organization added — a NetworkManager or system admin can
+        // edit any provider in the network regardless of who added it.
+        if (!isTenantAdmin && !isNetworkManager && membership.OwningOrganizationId != callerOrgId)
+            throw new ForbiddenException("You can only edit providers your organization added to this network.");
 
         ValidateNetworkProviderFields(
             request.FirstName,
@@ -676,17 +708,25 @@ public class NetworkService : INetworkService
 
     // ── Mapping helpers ───────────────────────────────────────────────────────
 
+    // Matches the active-provider predicate used by the public network surface
+    // (PublicNetworkEndpoints.IsPublicProviderLocationActive) so the authenticated
+    // Networks admin list/detail views show the same providers as the public
+    // network page and the referral portal's submit page.
+    private static bool IsActiveMembership(NetworkProvider np) =>
+        np.IsActive && np.Provider.IsActive && np.Facility.IsActive;
+
     private static NetworkSummaryResponse ToSummary(ProviderNetwork n, int providerCount) =>
-        new(n.Id, n.Name, n.Description, providerCount, n.CreatedAtUtc, n.UpdatedAtUtc);
+        new(n.Id, n.Name, n.Description, providerCount, n.CreatedAtUtc, n.UpdatedAtUtc, n.OwningOrganizationId);
 
     private static NetworkDetailResponse ToDetail(ProviderNetwork n) =>
         new(
             n.Id,
             n.Name,
             n.Description,
-            n.NetworkProviders.Select(ToProviderItem).ToList(),
+            n.NetworkProviders.Where(IsActiveMembership).Select(ToProviderItem).ToList(),
             n.CreatedAtUtc,
-            n.UpdatedAtUtc);
+            n.UpdatedAtUtc,
+            n.OwningOrganizationId);
 
     private static NetworkProviderItem ToProviderItem(NetworkProvider np)
         => ToProviderItem(np, np.Provider, np.Facility);

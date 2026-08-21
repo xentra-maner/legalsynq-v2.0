@@ -173,6 +173,146 @@ public class NetworkProviderEditTests
     }
 
     [Fact]
+    public async Task UpdateProviderAsync_WhenCallerDidNotOwnProvider_ThrowsForbidden()
+    {
+        // LSV3-1084: a CareConnectReferrerAdmin (not a NetworkManager or tenant admin)
+        // may only edit providers their own organization added to the network.
+        var tenantId = Guid.CreateVersion7();
+        var networkId = Guid.CreateVersion7();
+        var providerId = Guid.CreateVersion7();
+        var ownerOrgId = Guid.CreateVersion7();
+        var callerOrgId = Guid.CreateVersion7();
+        var provider = Provider.Create(
+            tenantId, "Jane Provider", "Jane Practice", "jane@example.com", "555-0100",
+            "123 Main St", "Austin", "TX", "78701", true, true, null);
+        var facility = Facility.Create(
+            tenantId, "Jane Practice", "123 Main St", "Austin", "TX", "78701", "555-0100",
+            true, null, "jane@example.com");
+        var membership = NetworkProvider.Create(tenantId, networkId, provider.Id, facility.Id, true, true, ownerOrgId);
+        SetNavigation(membership, nameof(NetworkProvider.Provider), provider);
+        SetNavigation(membership, nameof(NetworkProvider.Facility), facility);
+
+        var networks = new Mock<INetworkRepository>();
+        networks.Setup(r => r.GetByIdAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ProviderNetwork.Create(tenantId, "Network", string.Empty));
+        networks.Setup(r => r.GetMembershipByIdOrProviderAsync(networkId, providerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(membership);
+
+        var sut = BuildSut(networks.Object, Mock.Of<ISpecialtyRepository>());
+
+        await Assert.ThrowsAsync<ForbiddenException>(() =>
+            sut.UpdateProviderAsync(tenantId, networkId, providerId, ValidUpdateRequest([]), null,
+                callerOrgId: callerOrgId, isNetworkManager: false, isTenantAdmin: false));
+
+        networks.Verify(r => r.UpdateProviderInRegistryAsync(It.IsAny<Provider>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateProviderAsync_WhenCallerIsNetworkManager_BypassesOwnershipCheck()
+    {
+        var tenantId = Guid.CreateVersion7();
+        var networkId = Guid.CreateVersion7();
+        var providerId = Guid.CreateVersion7();
+        var ownerOrgId = Guid.CreateVersion7();
+        var callerOrgId = Guid.CreateVersion7();
+        var specialtyId = Guid.CreateVersion7();
+        var specialty = Specialty.Create("Pain Doctors", "PAIN_DOCTORS", null);
+        var provider = Provider.Create(
+            tenantId, "Jane Provider", "Jane Practice", "jane@example.com", "555-0100",
+            "123 Main St", "Austin", "TX", "78701", true, true, null);
+        var facility = Facility.Create(
+            tenantId, "Jane Practice", "123 Main St", "Austin", "TX", "78701", "555-0100",
+            true, null, "jane@example.com");
+        var membership = NetworkProvider.Create(tenantId, networkId, provider.Id, facility.Id, true, true, ownerOrgId);
+        SetNavigation(membership, nameof(NetworkProvider.Provider), provider);
+        SetNavigation(membership, nameof(NetworkProvider.Facility), facility);
+
+        var networks = new Mock<INetworkRepository>();
+        networks.Setup(r => r.GetByIdAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ProviderNetwork.Create(tenantId, "Network", string.Empty));
+        networks.Setup(r => r.GetMembershipByIdOrProviderAsync(networkId, providerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(membership);
+        networks.Setup(r => r.GetMembershipByIdOrProviderAsync(networkId, membership.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(membership);
+        networks.Setup(r => r.UpdateProviderInRegistryAsync(provider, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        networks.Setup(r => r.GetFacilityByIdAsync(tenantId, facility.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(facility);
+        networks.Setup(r => r.UpdateFacilityAsync(facility, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        networks.Setup(r => r.SyncProviderSpecialtiesAsync(provider.Id, It.IsAny<List<Guid>>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        networks.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var specialties = new Mock<ISpecialtyRepository>();
+        specialties.Setup(r => r.GetActiveByIdsAsync(It.Is<List<Guid>>(ids => ids.SequenceEqual(new[] { specialtyId })), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([specialty]);
+
+        var sut = BuildSut(networks.Object, specialties.Object);
+
+        var result = await sut.UpdateProviderAsync(tenantId, networkId, providerId, ValidUpdateRequest([specialtyId]), null,
+            callerOrgId: callerOrgId, isNetworkManager: true, isTenantAdmin: false);
+
+        Assert.Equal("Dr. Jane Provider", result.Name);
+    }
+
+    [Fact]
+    public async Task RemoveProviderAsync_WhenCallerDidNotOwnProvider_ThrowsForbidden()
+    {
+        var tenantId = Guid.CreateVersion7();
+        var networkId = Guid.CreateVersion7();
+        var ownerOrgId = Guid.CreateVersion7();
+        var callerOrgId = Guid.CreateVersion7();
+        var facility = Facility.Create(
+            tenantId, "Jane Practice", "123 Main St", "Austin", "TX", "78701", "555-0100", true, null);
+        var membership = NetworkProvider.Create(tenantId, networkId, Guid.CreateVersion7(), facility.Id, true, true, ownerOrgId);
+        SetNavigation(membership, nameof(NetworkProvider.Facility), facility);
+
+        var networks = new Mock<INetworkRepository>();
+        networks.Setup(r => r.GetByIdAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ProviderNetwork.Create(tenantId, "Network", string.Empty));
+        networks.Setup(r => r.GetMembershipByIdOrProviderAsync(networkId, membership.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(membership);
+
+        var sut = BuildSut(networks.Object, Mock.Of<ISpecialtyRepository>());
+
+        await Assert.ThrowsAsync<ForbiddenException>(() =>
+            sut.RemoveProviderAsync(tenantId, networkId, membership.Id, cascadeFacility: false, userId: null,
+                callerOrgId: callerOrgId, isNetworkManager: false, isTenantAdmin: false));
+
+        Assert.True(membership.IsActive);
+        networks.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task RemoveProviderAsync_WhenCallerOwnsProvider_Succeeds()
+    {
+        var tenantId = Guid.CreateVersion7();
+        var networkId = Guid.CreateVersion7();
+        var callerOrgId = Guid.CreateVersion7();
+        var facility = Facility.Create(
+            tenantId, "Jane Practice", "123 Main St", "Austin", "TX", "78701", "555-0100", true, null);
+        var membership = NetworkProvider.Create(tenantId, networkId, Guid.CreateVersion7(), facility.Id, true, true, callerOrgId);
+        SetNavigation(membership, nameof(NetworkProvider.Facility), facility);
+
+        var networks = new Mock<INetworkRepository>();
+        networks.Setup(r => r.GetByIdAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ProviderNetwork.Create(tenantId, "Network", string.Empty));
+        networks.Setup(r => r.GetMembershipByIdOrProviderAsync(networkId, membership.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(membership);
+        networks.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var sut = BuildSut(networks.Object, Mock.Of<ISpecialtyRepository>());
+
+        await sut.RemoveProviderAsync(tenantId, networkId, membership.Id, cascadeFacility: false, userId: null,
+            callerOrgId: callerOrgId, isNetworkManager: false, isTenantAdmin: false);
+
+        Assert.False(membership.IsActive);
+    }
+
+    [Fact]
     public async Task RemoveProviderAsync_SoftDeletesMembershipAndTagsFacilityInactive()
     {
         var tenantId = Guid.CreateVersion7();

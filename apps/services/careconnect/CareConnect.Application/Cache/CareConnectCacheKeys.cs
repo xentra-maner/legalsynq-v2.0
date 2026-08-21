@@ -26,6 +26,16 @@ public static class CareConnectCacheKeys
     public static string PublicNetworkList(Guid tenantId)
         => $"cc:pub:network:list:{tenantId}";
 
+    /// <summary>
+    /// Network list scoped to a specific referring organization (e.g. a law firm) —
+    /// includes tenant-owned networks plus that organization's own network(s).
+    /// Separate key from the unscoped list so one law firm's filtered view is never
+    /// served to another. Not tracked in PublicNetworkInvalidationKeys (per-org keys
+    /// can't be enumerated); relies on the short TTL to pick up changes.
+    /// </summary>
+    public static string PublicNetworkList(Guid tenantId, Guid organizationId)
+        => $"cc:pub:network:list:{tenantId}:{organizationId}";
+
     /// <summary>Full detail (providers + markers) for one network.</summary>
     public static string PublicNetworkDetail(Guid tenantId, Guid networkId)
         => $"cc:pub:network:detail:{tenantId}:{networkId}";

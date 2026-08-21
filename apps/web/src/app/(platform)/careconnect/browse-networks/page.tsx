@@ -7,7 +7,7 @@ import {
   type PublicNetworkSummary,
 } from '@/lib/public-network-api';
 import { ServerApiError }        from '@/lib/server-api-client';
-import { NetworkCard }            from '@/components/careconnect/network-card';
+import { BrowseNetworksClient }  from '@/components/careconnect/browse-networks-client';
 import { ProductRole, OrgType }  from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -47,6 +47,10 @@ export default async function BrowseNetworksPage() {
         tenantId: item.tenantId,
         tenantCode: item.tenantCode,
         tenantName: item.tenantName,
+        // The law firm's own organization for this tenant assignment — passed
+        // through to the network list so the firm's own (non-tenant-owned)
+        // network is included alongside tenant-owned networks, not just those.
+        organizationId: item.organizationId ?? undefined,
       }))
       .filter((item, index, arr) => arr.findIndex(x => x.tenantId === item.tenantId) === index);
 
@@ -58,7 +62,9 @@ export default async function BrowseNetworksPage() {
 
     const networksByTenant = new Map(
       await Promise.all(
-        activeTenants.map(async tenant => [tenant.tenantId, await fetchPublicNetworks(tenant.tenantId)] as const),
+        activeTenants.map(async tenant =>
+          [tenant.tenantId, await fetchPublicNetworks(tenant.tenantId, tenant.organizationId)] as const,
+        ),
       ),
     );
 
@@ -78,55 +84,27 @@ export default async function BrowseNetworksPage() {
 
   if (fetchError) {
     return (
-      <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-sm text-red-700">
-        {fetchError}
+      <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
+        <i className="ri-error-warning-line text-lg text-red-500 mt-0.5" />
+        <div>
+          <p className="font-medium">Unable to load networks</p>
+          <p className="text-red-600/90 mt-0.5">{fetchError}</p>
+        </div>
       </div>
     );
   }
 
   if (tenantNetworkGroups.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-24 text-center">
-        <i className="ri-share-circle-line text-5xl text-gray-200 mb-4" />
+      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50/50 py-24 text-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-orange-50 mb-4">
+          <i className="ri-share-circle-line text-3xl text-orange-300" />
+        </div>
         <p className="text-sm font-medium text-gray-500">No provider networks are available for your CareConnect assignments yet.</p>
         <p className="text-xs text-gray-400 mt-1">Check back later or contact your coordinator.</p>
       </div>
     );
   }
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-gray-900">Available Networks</h1>
-        <p className="text-sm text-gray-500 mt-0.5">
-          Select a network from any CareConnect tenant assigned to this account.
-        </p>
-      </div>
-
-      <div className="space-y-8">
-        {tenantNetworkGroups.map(group => {
-          const tenantLogoUrl = `/api/branding/logo/public?tenantCode=${encodeURIComponent(group.tenantCode)}`;
-          return (
-            <section key={group.tenantId} className="space-y-3">
-              <div>
-                <h2 className="text-sm font-semibold text-gray-900">{group.tenantName}</h2>
-                <p className="text-xs text-gray-500">{group.tenantCode}</p>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {group.networks.map(network => (
-                  <NetworkCard
-                    key={`${group.tenantId}:${network.id}`}
-                    network={network}
-                    tenantLogoUrl={tenantLogoUrl}
-                    href={`/careconnect/browse-networks/${network.id}?tenantId=${encodeURIComponent(group.tenantId)}`}
-                  />
-                ))}
-              </div>
-            </section>
-          );
-        })}
-      </div>
-    </div>
-  );
+  return <BrowseNetworksClient tenantNetworkGroups={tenantNetworkGroups} />;
 }

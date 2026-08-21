@@ -18,6 +18,7 @@ public class ProviderNetworkConfiguration : IEntityTypeConfiguration<ProviderNet
         builder.Property(n => n.Name).IsRequired().HasMaxLength(200);
         builder.Property(n => n.Description).HasMaxLength(1000);
         builder.Property(n => n.IsDeleted).IsRequired();
+        builder.Property(n => n.OwningOrganizationId);
         builder.Property(n => n.CreatedAtUtc).IsRequired();
         builder.Property(n => n.UpdatedAtUtc).IsRequired();
         builder.Property(n => n.CreatedByUserId);

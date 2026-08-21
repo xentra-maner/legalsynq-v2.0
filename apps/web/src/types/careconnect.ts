@@ -1034,6 +1034,8 @@ export interface NetworkSummary {
   providerCount: number;
   createdAtUtc:  string;
   updatedAtUtc:  string;
+  /** LSV3-1084: the organization that created this network; null for pre-existing/tenant-admin-owned networks. */
+  owningOrganizationId?: string | null;
 }
 
 // CC2-INT-B06-02: Provider access-stage constants (mirrors ProviderAccessStage domain constants)
@@ -1087,6 +1089,8 @@ export interface NetworkDetail {
   providers:   NetworkProviderItem[];
   createdAtUtc: string;
   updatedAtUtc: string;
+  /** LSV3-1084: the organization that created this network; null for pre-existing/tenant-admin-owned networks. */
+  owningOrganizationId?: string | null;
 }
 
 export interface NetworkProviderMarker {

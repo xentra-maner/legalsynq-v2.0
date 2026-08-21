@@ -7,6 +7,8 @@ import dynamic from "next/dynamic";
 import { careConnectApi } from "@/lib/careconnect-api";
 import { ApiError } from "@/lib/api-client";
 import { formatPhoneDisplay } from "@/lib/phone";
+import { networkDisplayName } from "@/lib/network-display-name";
+import { useTenantBranding } from "@/providers/tenant-branding-provider";
 import { UrgencyBadge } from "@/components/careconnect/status-badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { NumberedMarker } from "@/components/careconnect/public-network-map";
@@ -18,6 +20,7 @@ import type {
   TreatmentTypeOption,
   UpdatePendingReferralRequest,
 } from "@/types/careconnect";
+import type { PublicNetworkDetail, PublicNetworkSummary, PublicProviderItem, PublicProviderMarker } from "@/lib/public-network-api";
 
 const NONE_TREATMENT_TYPE = "__none__";
 
@@ -64,6 +67,68 @@ function providerIdentity(provider: ProviderSummary): { primary: string; seconda
     primary: organization || name,
     secondary: organization && organization.toLowerCase() !== name.toLowerCase() ? name : null,
   };
+}
+
+// Mirrors the mapping used by the referral portal's submit page and the tenant
+// network page (both consume /api/public/network/{id}/detail) so the pending-request
+// provider picker shows the exact same tenant provider list.
+function publicProviderItemToProviderSummary(
+  item: PublicProviderItem,
+  marker?: PublicProviderMarker,
+): ProviderSummary {
+  return {
+    id: item.providerId,
+    facilityId: item.facilityId,
+    name: item.name,
+    title: item.title ?? null,
+    organizationName: item.organizationName ?? undefined,
+    email: item.email ?? "",
+    phone: item.phone,
+    addressLine1: item.addressLine1,
+    city: item.city,
+    state: item.state,
+    postalCode: item.postalCode,
+    isActive: item.isActive,
+    acceptingReferrals: item.acceptingReferrals,
+    categories: item.primaryCategory ? [item.primaryCategory] : [],
+    primaryCategory: item.primaryCategory ?? undefined,
+    specialties: item.specialties,
+    specialtyIds: item.specialties.map(specialty => specialty.id),
+    primarySpecialty: item.primarySpecialty,
+    primarySpecialtyId: item.primarySpecialtyId,
+    distanceMiles: item.distanceMiles,
+    displayLabel: item.organizationName?.trim() || item.name,
+    markerSubtitle: [
+      item.city && item.state ? `${item.city}, ${item.state}` : item.city || item.state,
+      item.primarySpecialty,
+    ].filter(Boolean).join(" · "),
+    hasGeoLocation: Boolean(marker && (marker.latitude !== 0 || marker.longitude !== 0)),
+    latitude: marker?.latitude,
+    longitude: marker?.longitude,
+    isMobile: item.isMobile,
+    serviceRadiusMiles: item.serviceRadiusMiles,
+    serviceAreaLabel: item.serviceAreaLabel,
+  };
+}
+
+// Lists networks available for this request. When the request's law firm has its own
+// network, the tenant network is offered alongside it — mirrors the referral portal's
+// submit page (fetchReferralPortalPublicNetworkList), scoped server-side by organizationId.
+async function fetchNetworkList(organizationId?: string): Promise<PublicNetworkSummary[]> {
+  const qs = organizationId ? `?organizationId=${encodeURIComponent(organizationId)}` : "";
+  const networksRes = await fetch(`/api/public/careconnect/api/public/network${qs}`);
+  if (!networksRes.ok) throw new Error("Failed to load provider networks.");
+  return await networksRes.json() as PublicNetworkSummary[];
+}
+
+async function fetchNetworkProviders(networkId: string): Promise<ProviderSummary[]> {
+  const detailRes = await fetch(`/api/public/careconnect/api/public/network/${networkId}/detail`);
+  if (!detailRes.ok) throw new Error("Failed to load provider network detail.");
+  const detail = await detailRes.json() as PublicNetworkDetail;
+
+  const markerByNetworkProviderId = new Map(detail.markers.map(marker => [marker.networkProviderId, marker]));
+  return detail.providers.map(item =>
+    publicProviderItemToProviderSummary(item, markerByNetworkProviderId.get(item.networkProviderId)));
 }
 
 function toRad(value: number): number { return value * Math.PI / 180; }
@@ -248,6 +313,24 @@ function TextField({
   );
 }
 
+function formatDisplayDate(value: string | undefined): string {
+  if (!value) return "";
+  const parsed = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+}
+
+function ViewField({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <span className="mb-1 block text-sm font-medium text-gray-700">{label}</span>
+      <p className="text-sm text-gray-900 min-h-[2.25rem] flex items-center">
+        {value ? value : <span className="text-gray-400">—</span>}
+      </p>
+    </div>
+  );
+}
+
 const ATTACHMENT_ACCEPT = [
   "application/pdf",
   "application/msword",
@@ -264,11 +347,13 @@ const ATTACHMENT_ACCEPT = [
 function AttachmentsField({
   attachments,
   uploading,
+  editable,
   onUpload,
   onView,
 }: {
   attachments: AttachmentSummary[];
   uploading: boolean;
+  editable: boolean;
   onUpload: (files: File[]) => void;
   onView: (attachment: AttachmentSummary) => void;
 }) {
@@ -278,31 +363,33 @@ function AttachmentsField({
         Attachments
       </legend>
       <div className="space-y-3">
-        <label className={`flex items-center gap-3 rounded-lg border border-dashed px-3 py-3 transition-colors ${
-          uploading
-            ? "pointer-events-none opacity-50"
-            : "cursor-pointer border-gray-300 hover:border-primary hover:bg-primary/5"
-        }`}>
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-50 text-gray-400">
-            <i className={uploading ? "ri-loader-4-line animate-spin text-lg" : "ri-upload-2-line text-lg"} />
-          </span>
-          <span className="min-w-0">
-            <span className="block text-sm font-medium text-gray-900">{uploading ? "Uploading documents..." : "Attach documents"}</span>
-            <span className="block text-xs text-gray-500">PDF, Word, images, text, CSV, or Excel files.</span>
-          </span>
-          <input
-            type="file"
-            className="hidden"
-            accept={ATTACHMENT_ACCEPT}
-            multiple
-            disabled={uploading}
-            onChange={event => {
-              const files = Array.from(event.target.files ?? []);
-              if (files.length > 0) onUpload(files);
-              event.target.value = "";
-            }}
-          />
-        </label>
+        {editable && (
+          <label className={`flex items-center gap-3 rounded-lg border border-dashed px-3 py-3 transition-colors ${
+            uploading
+              ? "pointer-events-none opacity-50"
+              : "cursor-pointer border-gray-300 hover:border-primary hover:bg-primary/5"
+          }`}>
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-50 text-gray-400">
+              <i className={uploading ? "ri-loader-4-line animate-spin text-lg" : "ri-upload-2-line text-lg"} />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-gray-900">{uploading ? "Uploading documents..." : "Attach documents"}</span>
+              <span className="block text-xs text-gray-500">PDF, Word, images, text, CSV, or Excel files.</span>
+            </span>
+            <input
+              type="file"
+              className="hidden"
+              accept={ATTACHMENT_ACCEPT}
+              multiple
+              disabled={uploading}
+              onChange={event => {
+                const files = Array.from(event.target.files ?? []);
+                if (files.length > 0) onUpload(files);
+                event.target.value = "";
+              }}
+            />
+          </label>
+        )}
 
         {attachments.length > 0 ? (
           <div className="rounded-lg border border-gray-200 bg-gray-50">
@@ -345,8 +432,12 @@ export default function PendingReferralRequestDetailPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const requestId = params.id;
+  const { displayName: tenantDisplayName = "" } = useTenantBranding();
   const [request, setRequest] = useState<PendingReferralRequest | null>(null);
+  const [networkOptions, setNetworkOptions] = useState<PublicNetworkSummary[]>([]);
+  const [selectedNetworkId, setSelectedNetworkId] = useState<string | null>(null);
   const [providers, setProviders] = useState<ProviderSummary[]>([]);
+  const [providersLoading, setProvidersLoading] = useState(false);
   const [treatmentTypes, setTreatmentTypes] = useState<TreatmentTypeOption[]>([]);
   const [selectedProviders, setSelectedProviders] = useState<ReviewProviderPreference[]>([]);
   const [form, setForm] = useState<UpdatePendingReferralRequest | null>(null);
@@ -363,6 +454,7 @@ export default function PendingReferralRequestDetailPage() {
   const [zoomToProviderId, setZoomToProviderId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [accepting, setAccepting] = useState(false);
   const [declining, setDeclining] = useState(false);
@@ -372,15 +464,13 @@ export default function PendingReferralRequestDetailPage() {
     setLoading(true);
     setError(null);
     try {
-      const [requestRes, providerRes, treatmentTypeRes] = await Promise.all([
+      const [requestRes, treatmentTypeRes] = await Promise.all([
         careConnectApi.pendingReferralRequests.getById(requestId),
-        careConnectApi.providers.search({ isActive: true, acceptingReferrals: true, pageSize: 100 }),
         careConnectApi.treatmentTypes.list(),
       ]);
       const nextRequest = requestRes.data;
       setRequest(nextRequest);
       setForm(formFromRequest(nextRequest));
-      setProviders(providerRes.data.items);
       setTreatmentTypes(treatmentTypeRes.data);
       setSelectedProviders(preferredProvidersFor(nextRequest).map(reviewProviderFromPreference));
     } catch (err) {
@@ -391,6 +481,64 @@ export default function PendingReferralRequestDetailPage() {
   }
 
   useEffect(() => { void load(); }, [requestId]);
+
+  // Reloads the network list whenever the request's law firm is known. When the law
+  // firm has its own network, the tenant network is offered alongside it; the law
+  // firm's own network is preferred by default, and the reviewer can switch.
+  useEffect(() => {
+    if (!request) return;
+    let cancelled = false;
+    setNetworkOptions([]);
+    setSelectedNetworkId(null);
+
+    fetchNetworkList(request.lawFirmOrganizationId || undefined)
+      .then(networks => {
+        if (cancelled) return;
+        setNetworkOptions(networks);
+        const lawFirmNetwork = request.lawFirmOrganizationId
+          ? networks.find(n => n.owningOrganizationId === request.lawFirmOrganizationId)
+          : undefined;
+        const tenantNetwork = networks.find(n => !n.owningOrganizationId);
+        setSelectedNetworkId((lawFirmNetwork ?? tenantNetwork ?? networks[0])?.id ?? null);
+      })
+      .catch(err => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "Failed to load provider networks.");
+      });
+
+    return () => { cancelled = true; };
+  }, [request?.lawFirmOrganizationId]);
+
+  // Loads providers for whichever network is currently selected.
+  useEffect(() => {
+    if (!selectedNetworkId) {
+      setProviders([]);
+      return;
+    }
+    let cancelled = false;
+    setProvidersLoading(true);
+
+    fetchNetworkProviders(selectedNetworkId)
+      .then(list => {
+        if (cancelled) return;
+        setProviders(list);
+      })
+      .catch(err => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "Failed to load provider network detail.");
+      })
+      .finally(() => {
+        if (!cancelled) setProvidersLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [selectedNetworkId]);
+
+  function selectNetwork(networkId: string) {
+    if (networkId === selectedNetworkId) return;
+    setSelectedNetworkId(networkId);
+    setSelectedMarkerId(null);
+  }
 
   const selectedProviderKeys = useMemo(
     () => new Set(selectedProviders.map(reviewProviderKey)),
@@ -488,11 +636,11 @@ export default function PendingReferralRequestDetailPage() {
   }
 
   async function saveRequest() {
-    if (!request || !form) return;
+    if (!request || !form) return false;
     const validationError = validateReviewDates(form);
     if (validationError) {
       setError(validationError);
-      return;
+      return false;
     }
     setSaving(true);
     setError(null);
@@ -500,11 +648,22 @@ export default function PendingReferralRequestDetailPage() {
       const result = await careConnectApi.pendingReferralRequests.update(request.id, updatePayloadFromForm(form));
       setRequest(result.data);
       setForm(formFromRequest(result.data));
+      return true;
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to update pending request.");
+      return false;
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleEditToggleClick() {
+    if (!isEditing) {
+      setIsEditing(true);
+      return;
+    }
+    const success = await saveRequest();
+    if (success) setIsEditing(false);
   }
 
   async function uploadAttachments(files: File[]) {
@@ -611,9 +770,9 @@ export default function PendingReferralRequestDetailPage() {
           <p className="mt-0.5 text-sm text-gray-500">Update request values before accepting or declining.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => void saveRequest()} disabled={saving} className="inline-flex items-center gap-2 rounded-md border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-60">
-            <i className="ri-save-line" />
-            {saving ? "Saving..." : "Save changes"}
+          <button type="button" onClick={() => void handleEditToggleClick()} disabled={saving} className="inline-flex items-center gap-2 rounded-md border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-60">
+            <i className={isEditing ? "ri-save-line" : "ri-edit-line"} />
+            {isEditing ? (saving ? "Saving..." : "Save changes") : "Edit"}
           </button>
           <button type="button" onClick={() => void acceptRequest()} disabled={accepting} className="inline-flex items-center gap-2 rounded-md bg-green-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-60">
             <i className="ri-checkbox-circle-line" />
@@ -639,12 +798,25 @@ export default function PendingReferralRequestDetailPage() {
               Patient Information
             </legend>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <TextField label="First name" required value={form.clientFirstName} onChange={value => setForm({ ...form, clientFirstName: value })} />
-              <TextField label="Last name" required value={form.clientLastName} onChange={value => setForm({ ...form, clientLastName: value })} />
-              <TextField label="Phone" required value={form.clientPhone} onChange={value => setForm({ ...form, clientPhone: value })} />
-              <TextField label="Email" type="email" value={form.clientEmail} onChange={value => setForm({ ...form, clientEmail: value })} />
-              <TextField label="Date of birth" required type="date" value={form.clientDob} onChange={value => setForm({ ...form, clientDob: value })} />
-              <TextField label="Date of accident" required type="date" value={form.dateOfAccident} onChange={value => setForm({ ...form, dateOfAccident: value })} />
+              {isEditing ? (
+                <>
+                  <TextField label="First name" required value={form.clientFirstName} onChange={value => setForm({ ...form, clientFirstName: value })} />
+                  <TextField label="Last name" required value={form.clientLastName} onChange={value => setForm({ ...form, clientLastName: value })} />
+                  <TextField label="Phone" required value={form.clientPhone} onChange={value => setForm({ ...form, clientPhone: value })} />
+                  <TextField label="Email" type="email" value={form.clientEmail} onChange={value => setForm({ ...form, clientEmail: value })} />
+                  <TextField label="Date of birth" required type="date" value={form.clientDob} onChange={value => setForm({ ...form, clientDob: value })} />
+                  <TextField label="Date of accident" required type="date" value={form.dateOfAccident} onChange={value => setForm({ ...form, dateOfAccident: value })} />
+                </>
+              ) : (
+                <>
+                  <ViewField label="First name" value={form.clientFirstName} />
+                  <ViewField label="Last name" value={form.clientLastName} />
+                  <ViewField label="Phone" value={formatPhoneDisplay(form.clientPhone) || form.clientPhone} />
+                  <ViewField label="Email" value={form.clientEmail ?? ""} />
+                  <ViewField label="Date of birth" value={formatDisplayDate(form.clientDob)} />
+                  <ViewField label="Date of accident" value={formatDisplayDate(form.dateOfAccident)} />
+                </>
+              )}
             </div>
           </fieldset>
 
@@ -653,43 +825,64 @@ export default function PendingReferralRequestDetailPage() {
               Referral Details
             </legend>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <label className="block">
-                <span className="mb-1 block text-sm font-medium text-gray-700">Urgency <span className="text-red-500">*</span></span>
-                <Select value={form.urgency} onValueChange={value => setForm({ ...form, urgency: value })}>
-                  <SelectTrigger className="h-10 w-full"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {URGENCY_OPTIONS.map(option => <SelectItem key={option} value={option}>{option}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-sm font-medium text-gray-700">Type of service <span className="text-red-500">*</span></span>
-                <Select value={form.requestedService} onValueChange={value => setForm({ ...form, requestedService: value })}>
-                  <SelectTrigger className="h-10 w-full"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {serviceTypeOptions.map(option => <SelectItem key={option} value={option}>{option}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-sm font-medium text-gray-700">Type of treatment</span>
-                <Select
-                  value={form.treatmentTypeId || NONE_TREATMENT_TYPE}
-                  onValueChange={value => setForm({ ...form, treatmentTypeId: value === NONE_TREATMENT_TYPE ? "" : value })}
-                >
-                  <SelectTrigger className="h-10 w-full"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NONE_TREATMENT_TYPE}>None</SelectItem>
-                    {treatmentTypes.map(type => <SelectItem key={type.id} value={type.id}>{type.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </label>
-              <TextField label="Lien company name" value={form.lienCompanyName} onChange={value => setForm({ ...form, lienCompanyName: value })} />
-              <TextField label="Lien company email" type="email" value={form.lienCompanyEmail} onChange={value => setForm({ ...form, lienCompanyEmail: value })} />
-              <label className="block sm:col-span-2 lg:col-span-3">
-                <span className="mb-1 block text-sm font-medium text-gray-700">Notes</span>
-                <textarea value={form.notes ?? ""} onChange={event => setForm({ ...form, notes: event.target.value })} rows={3} className="w-full resize-none rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100" />
-              </label>
+              {isEditing ? (
+                <>
+                  <label className="block">
+                    <span className="mb-1 block text-sm font-medium text-gray-700">Urgency <span className="text-red-500">*</span></span>
+                    <Select value={form.urgency} onValueChange={value => setForm({ ...form, urgency: value })}>
+                      <SelectTrigger className="h-10 w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {URGENCY_OPTIONS.map(option => <SelectItem key={option} value={option}>{option}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-sm font-medium text-gray-700">Type of service <span className="text-red-500">*</span></span>
+                    <Select value={form.requestedService} onValueChange={value => setForm({ ...form, requestedService: value })}>
+                      <SelectTrigger className="h-10 w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {serviceTypeOptions.map(option => <SelectItem key={option} value={option}>{option}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-sm font-medium text-gray-700">Type of treatment</span>
+                    <Select
+                      value={form.treatmentTypeId || NONE_TREATMENT_TYPE}
+                      onValueChange={value => setForm({ ...form, treatmentTypeId: value === NONE_TREATMENT_TYPE ? "" : value })}
+                    >
+                      <SelectTrigger className="h-10 w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NONE_TREATMENT_TYPE}>None</SelectItem>
+                        {treatmentTypes.map(type => <SelectItem key={type.id} value={type.id}>{type.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </label>
+                  <TextField label="Lien company name" value={form.lienCompanyName} onChange={value => setForm({ ...form, lienCompanyName: value })} />
+                  <TextField label="Lien company email" type="email" value={form.lienCompanyEmail} onChange={value => setForm({ ...form, lienCompanyEmail: value })} />
+                  <label className="block sm:col-span-2 lg:col-span-3">
+                    <span className="mb-1 block text-sm font-medium text-gray-700">Notes</span>
+                    <textarea value={form.notes ?? ""} onChange={event => setForm({ ...form, notes: event.target.value })} rows={3} className="w-full resize-none rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100" />
+                  </label>
+                </>
+              ) : (
+                <>
+                  <ViewField label="Urgency" value={form.urgency} />
+                  <ViewField label="Type of service" value={form.requestedService ?? ""} />
+                  <ViewField
+                    label="Type of treatment"
+                    value={form.treatmentTypeId ? treatmentTypes.find(type => type.id === form.treatmentTypeId)?.name ?? "" : "None"}
+                  />
+                  <ViewField label="Lien company name" value={form.lienCompanyName ?? ""} />
+                  <ViewField label="Lien company email" value={form.lienCompanyEmail ?? ""} />
+                  <div className="sm:col-span-2 lg:col-span-3">
+                    <span className="mb-1 block text-sm font-medium text-gray-700">Notes</span>
+                    <p className="min-h-[2.25rem] whitespace-pre-wrap rounded-md border border-transparent px-0 py-1 text-sm text-gray-900">
+                      {form.notes ? form.notes : <span className="text-gray-400">—</span>}
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
           </fieldset>
 
@@ -698,9 +891,41 @@ export default function PendingReferralRequestDetailPage() {
               Medical Provider Preference
             </legend>
             <div className="space-y-3">
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                Provider selections are recommendations for routing this referral. The first selected provider is used when accepting.
-              </div>
+              {isEditing && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  Provider selections are recommendations for routing this referral. The first selected provider is used when accepting.
+                </div>
+              )}
+
+              {networkOptions.length > 1 && (
+                <div className="rounded-lg border border-gray-200 bg-white px-3 py-3">
+                  <p className="text-sm font-medium text-gray-900">Provider network</p>
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    {request.lawFirmName ?? "This law firm"} has its own provider network. Choose which network to search.
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {networkOptions.map(n => {
+                      const active = n.id === selectedNetworkId;
+                      return (
+                        <button
+                          key={n.id}
+                          type="button"
+                          onClick={() => selectNetwork(n.id)}
+                          disabled={!isEditing}
+                          className={`cursor-pointer rounded-md border px-3 py-1.5 text-left text-sm disabled:cursor-not-allowed disabled:opacity-50 ${
+                            active
+                              ? "border-primary bg-primary/10 text-primary font-medium"
+                              : "border-gray-300 text-gray-700 hover:bg-gray-50"
+                          }`}
+                        >
+                          {networkDisplayName(n, tenantDisplayName)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-3">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-gray-900">
@@ -708,15 +933,19 @@ export default function PendingReferralRequestDetailPage() {
                       ? `${selectedProviders.length} preferred provider${selectedProviders.length === 1 ? "" : "s"} selected`
                       : "No preferred providers selected"}
                   </p>
-                  <p className="mt-0.5 text-xs text-gray-500">Open the provider picker to add or remove recommendations.</p>
+                  {isEditing && (
+                    <p className="mt-0.5 text-xs text-gray-500">Open the provider picker to add or remove recommendations.</p>
+                  )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setProviderPickerOpen(true)}
-                  className="shrink-0 rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary/90"
-                >
-                  Open provider map
-                </button>
+                {isEditing && (
+                  <button
+                    type="button"
+                    onClick={() => setProviderPickerOpen(true)}
+                    className="shrink-0 rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary/90"
+                  >
+                    Open provider map
+                  </button>
+                )}
               </div>
               {selectedProviders.length > 0 && (
                 <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
@@ -732,15 +961,17 @@ export default function PendingReferralRequestDetailPage() {
                             <p className="truncate text-sm font-medium text-gray-900">{index + 1}. {provider.displayLabel}</p>
                             {provider.markerSubtitle && <p className="truncate text-xs text-gray-500">{provider.markerSubtitle}</p>}
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => removeProvider(key)}
-                            aria-label={`Remove ${provider.displayLabel} from preferred providers`}
-                            title="Remove from preferred providers"
-                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-                          >
-                            <i className="ri-close-line text-base" />
-                          </button>
+                          {isEditing && (
+                            <button
+                              type="button"
+                              onClick={() => removeProvider(key)}
+                              aria-label={`Remove ${provider.displayLabel} from preferred providers`}
+                              title="Remove from preferred providers"
+                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                            >
+                              <i className="ri-close-line text-base" />
+                            </button>
+                          )}
                         </div>
                       );
                     })}
@@ -753,6 +984,7 @@ export default function PendingReferralRequestDetailPage() {
           <AttachmentsField
             attachments={request.attachments ?? []}
             uploading={uploadingAttachments}
+            editable={isEditing}
             onUpload={files => void uploadAttachments(files)}
             onView={attachment => void viewAttachment(attachment)}
           />
@@ -815,7 +1047,7 @@ export default function PendingReferralRequestDetailPage() {
             </div>
             <div className={`grid min-h-0 flex-1 ${providerViewMode === "split" ? "grid-cols-[340px_minmax(0,1fr)]" : "grid-cols-1"}`}>
               {providerViewMode !== "map" && <div className={`min-h-0 overflow-y-auto bg-white ${providerViewMode === "split" ? "border-r border-gray-200" : ""}`}>
-                {filteredProviders.length === 0 ? <div className="flex h-full items-center justify-center px-6 text-center text-sm text-gray-500">No providers match your search.</div> : <div className={providerViewMode === "list" ? "grid grid-cols-2 gap-3 p-3" : "divide-y divide-gray-100"}>
+                {providersLoading ? <div className="flex h-full items-center justify-center px-6 text-center text-sm text-gray-500">Loading providers…</div> : filteredProviders.length === 0 ? <div className="flex h-full items-center justify-center px-6 text-center text-sm text-gray-500">No providers match your search.</div> : <div className={providerViewMode === "list" ? "grid grid-cols-2 gap-3 p-3" : "divide-y divide-gray-100"}>
                   {filteredProviders.map((provider, index) => {
                     const value = providerSelectionValue(provider.id, provider.facilityId);
                     const selected = selectedProviderKeys.has(value);

@@ -10,7 +10,8 @@ public sealed record NetworkSummaryResponse(
     string Description,
     int    ProviderCount,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc,
+    Guid?  OwningOrganizationId = null);
 
 // ── Detail ────────────────────────────────────────────────────────────────────
 
@@ -20,7 +21,8 @@ public sealed record NetworkDetailResponse(
     string Description,
     List<NetworkProviderItem> Providers,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc,
+    Guid?  OwningOrganizationId = null);
 
 public sealed record NetworkProviderItem(
     Guid   Id,

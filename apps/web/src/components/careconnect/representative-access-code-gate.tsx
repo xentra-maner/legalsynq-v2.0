@@ -12,6 +12,8 @@ interface RepresentativePortalContextValue {
   code:                         string;
   referralAttributionId:        string;
   referralAttributionFullName:  string;
+  /** Tenant display name, resolved server-side in the layout — used to label the tenant's own network as "{tenantName} Preferred Providers". */
+  tenantDisplayName:            string;
   /** Clears the stored code and returns to the gate. There is no "sign out" — no session exists to end. */
   lock:                         () => void;
 }
@@ -26,6 +28,7 @@ export function useRepresentativePortal(): RepresentativePortalContextValue {
 
 interface Props {
   tenantId: string;
+  tenantDisplayName: string;
   children: ReactNode;
 }
 
@@ -38,9 +41,9 @@ interface Props {
  * PublicRepresentativeEndpoints). Revoking a code or deactivating its attribution takes
  * effect on the very next request, not on next unlock.
  */
-export function RepresentativeAccessCodeGate({ tenantId, children }: Props) {
+export function RepresentativeAccessCodeGate({ tenantId, tenantDisplayName, children }: Props) {
   const [ready, setReady] = useState(false);
-  const [unlocked, setUnlocked] = useState<Omit<RepresentativePortalContextValue, 'lock'> | null>(null);
+  const [unlocked, setUnlocked] = useState<Omit<RepresentativePortalContextValue, 'lock' | 'tenantDisplayName'> | null>(null);
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -117,7 +120,7 @@ export function RepresentativeAccessCodeGate({ tenantId, children }: Props) {
 
   if (unlocked) {
     return (
-      <RepresentativePortalContext.Provider value={{ ...unlocked, lock }}>
+      <RepresentativePortalContext.Provider value={{ ...unlocked, tenantDisplayName, lock }}>
         {children}
       </RepresentativePortalContext.Provider>
     );

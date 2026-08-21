@@ -12,7 +12,8 @@ public sealed record PublicNetworkSummary(
     Guid   Id,
     string Name,
     string Description,
-    int    ProviderCount);
+    int    ProviderCount,
+    Guid?  OwningOrganizationId = null);
 
 /// <summary>
 /// Public-facing provider item within a network.

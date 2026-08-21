@@ -7,6 +7,8 @@ public static class ProductRoleCodes
     public const string CareConnectReceiver       = "CARECONNECT_RECEIVER";
     // CC2-INT-B06: role-based network management (not orgType-based)
     public const string CareConnectNetworkManager = "CARECONNECT_NETWORK_MANAGER";
+    // LSV3-1084: law-firm-scoped network self-management (org-restricted to LAW_FIRM in seed data)
+    public const string CareConnectReferrerAdmin  = "CARECONNECT_REFERRER_ADMIN";
 
     // SynqLien
     public const string SynqLienSeller = "SYNQLIEN_SELLER";

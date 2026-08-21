@@ -29,18 +29,22 @@ public class NetworkRepository : INetworkRepository
     // BLK-PERF-01: Replaces the N+1 pattern in PublicNetworkEndpoints GET / where each
     // network in the list triggered a separate GetWithProvidersAsync round-trip.
     // A single query projects network fields + sub-query COUNT() of NetworkProviders.
-    public async Task<List<(Guid Id, string Name, string? Description, int ProviderCount)>> GetAllWithProviderCountAsync(
-        Guid tenantId, CancellationToken ct = default)
+    public async Task<List<(Guid Id, string Name, string? Description, int ProviderCount, Guid? OwningOrganizationId)>> GetAllWithProviderCountAsync(
+        Guid tenantId, Guid? organizationId = null, CancellationToken ct = default)
     {
         return await _db.ProviderNetworks
             .AsNoTracking()
             .Where(n => n.TenantId == tenantId && !n.IsDeleted)
+            .Where(n => organizationId.HasValue
+                ? (n.OwningOrganizationId == null || n.OwningOrganizationId == organizationId)
+                : n.OwningOrganizationId == null)
             .OrderBy(n => n.Name)
             .Select(n => ValueTuple.Create(
                 n.Id,
                 n.Name,
                 (string?)n.Description,
-                n.NetworkProviders.Count(np => np.IsActive && np.Provider.IsActive && np.Facility.IsActive)))
+                n.NetworkProviders.Count(np => np.IsActive && np.Provider.IsActive && np.Facility.IsActive),
+                n.OwningOrganizationId))
             .ToListAsync(ct);
     }
 

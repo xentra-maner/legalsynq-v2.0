@@ -1,6 +1,9 @@
+import { requireOrg } from '@/lib/auth-guards';
 import { careConnectServerApi } from '@/lib/careconnect-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
+import { resolveTenantFromCode } from '@/lib/public-network-api';
 import { NetworkListClient } from '@/components/careconnect/network-list-client';
+import { ProductRole } from '@/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,11 +11,25 @@ export const dynamic = 'force-dynamic';
 /**
  * /careconnect/networks — Provider Network Management
  *
- * CC2-INT-B06: Role-gated to CARECONNECT_NETWORK_MANAGER (enforced by layout.tsx).
- * Fetches the tenant's network list server-side and hands it to the interactive
- * client component for creation, editing, and deletion.
+ * CC2-INT-B06: Role-gated to CARECONNECT_NETWORK_MANAGER or CARECONNECT_REFERRER_ADMIN
+ * (enforced by layout.tsx). Fetches the tenant's network list server-side and hands it
+ * to the interactive client component for creation, editing, and deletion.
  */
 export default async function NetworksPage() {
+  const session = await requireOrg();
+  const canManageAll =
+    session.isPlatformAdmin ||
+    session.isTenantAdmin ||
+    session.productRoles.includes(ProductRole.CareConnectNetworkManager);
+
+  let tenantName = session.tenantCode;
+  try {
+    const resolved = await resolveTenantFromCode(session.tenantCode);
+    if (resolved?.displayName) tenantName = resolved.displayName;
+  } catch {
+    // Keep the tenant code as a fallback display name.
+  }
+
   let networks = null;
   let fetchError: string | null = null;
 
@@ -27,10 +44,10 @@ export default async function NetworksPage() {
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-gray-900">Provider Networks</h1>
-        <p className="text-sm text-gray-500 mt-1">
+    <div className="space-y-5">
+      <div>
+        <h1 className="text-xl font-semibold text-gray-900">Provider Networks</h1>
+        <p className="mt-0.5 text-sm text-gray-500">
           Create and manage groups of providers for streamlined referral workflows.
         </p>
       </div>
@@ -40,7 +57,12 @@ export default async function NetworksPage() {
           {fetchError}
         </div>
       ) : (
-        <NetworkListClient initialNetworks={networks ?? []} />
+        <NetworkListClient
+          initialNetworks={networks ?? []}
+          tenantName={tenantName}
+          canManageAll={canManageAll}
+          callerOrgId={session.orgId ?? null}
+        />
       )}
     </div>
   );

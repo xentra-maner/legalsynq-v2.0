@@ -38,9 +38,15 @@ public static class PublicNetworkEndpoints
         var group = app.MapGroup("/api/public/network");
 
         // ── GET /api/public/network ─────────────────────────────────────────
-        // Lists all networks for the resolved tenant.
+        // Lists networks for the resolved tenant.
         // Header: X-Tenant-Id (GUID, resolved from subdomain by Next.js BFF)
+        // Query:  organizationId (optional GUID) — when the referral portal has a
+        //         law firm selected, scopes the list to tenant-owned networks plus
+        //         that law firm's own network, so one law firm never sees another
+        //         law firm's private network. Omitted → tenant-owned networks only
+        //         (law-firm-owned networks are excluded, not merely unscoped).
         group.MapGet("/", async (
+            string?             organizationId,
             HttpContext        http,
             IConfiguration     config,
             INetworkRepository repo,
@@ -52,20 +58,27 @@ public static class PublicNetworkEndpoints
                 return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
                     detail: "Request origin could not be verified.");
 
-            // BLK-PERF-02: Cache the network list per tenant. Trust boundary
-            // validation (above) has already verified tenantId is trustworthy.
-            // Cache key is tenant-scoped — different tenants never share an entry.
+            Guid? orgId = Guid.TryParse(organizationId, out var parsedOrgId) ? parsedOrgId : null;
+
+            // BLK-PERF-02: Cache the network list per tenant (and per organization,
+            // when scoped). Trust boundary validation (above) has already verified
+            // tenantId is trustworthy. Cache key is tenant-scoped — different tenants
+            // never share an entry.
+            var cacheKey = orgId.HasValue
+                ? CareConnectCacheKeys.PublicNetworkList(tenantId.Value, orgId.Value)
+                : CareConnectCacheKeys.PublicNetworkList(tenantId.Value);
+
             var summaries = await cache.GetOrCreateAsync(
-                CareConnectCacheKeys.PublicNetworkList(tenantId.Value),
+                cacheKey,
                 async entry =>
                 {
                     entry.AbsoluteExpirationRelativeToNow = CareConnectCacheTtl.PublicNetwork;
                     entry.Size = 1;
                     // BLK-PERF-01: Single query — replaces the N+1 loop of
                     // GetAllByTenantAsync + N×GetWithProvidersAsync.
-                    var rows = await repo.GetAllWithProviderCountAsync(tenantId.Value, ct);
+                    var rows = await repo.GetAllWithProviderCountAsync(tenantId.Value, orgId, ct);
                     return rows
-                        .Select(r => new PublicNetworkSummary(r.Id, r.Name, r.Description ?? string.Empty, r.ProviderCount))
+                        .Select(r => new PublicNetworkSummary(r.Id, r.Name, r.Description ?? string.Empty, r.ProviderCount, r.OwningOrganizationId))
                         .ToList();
                 });
 

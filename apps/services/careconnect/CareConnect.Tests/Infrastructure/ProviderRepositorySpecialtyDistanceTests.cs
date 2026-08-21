@@ -57,6 +57,36 @@ public class ProviderRepositorySpecialtyDistanceTests
         Assert.True(result.Items[0].DistanceMiles < result.Items[1].DistanceMiles);
     }
 
+    [Fact]
+    public async Task SearchAsync_OnlyReturnsProvidersForTheRequestingTenant()
+    {
+        await using var db = CreateDb();
+        var tenantId = Guid.CreateVersion7();
+        var otherTenantId = Guid.CreateVersion7();
+
+        var ownProvider = Provider.Create(
+            tenantId, "Own Tenant PT", null, "own@example.com", "555-0200",
+            "1 Main St", "Los Angeles", "CA", "90012", true, true, null);
+        var otherTenantProvider = Provider.Create(
+            otherTenantId, "Other Tenant PT", null, "other@example.com", "555-0201",
+            "2 Main St", "Los Angeles", "CA", "90012", true, true, null);
+
+        db.Providers.AddRange(ownProvider, otherTenantProvider);
+        await db.SaveChangesAsync();
+
+        var repository = new ProviderRepository(db);
+
+        var result = await repository.SearchAsync(tenantId, new GetProvidersQuery
+        {
+            Page = 1,
+            PageSize = 10,
+            IsActive = true
+        });
+
+        Assert.Equal(1, result.TotalCount);
+        Assert.Equal("Own Tenant PT", Assert.Single(result.Items).Provider.Name);
+    }
+
     private static CareConnectDbContext CreateDb()
     {
         var options = new DbContextOptionsBuilder<CareConnectDbContext>()

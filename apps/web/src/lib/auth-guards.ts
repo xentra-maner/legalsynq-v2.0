@@ -63,15 +63,18 @@ export async function requireOrg(): Promise<PlatformSession & { orgId: string }>
 }
 
 /**
- * Ensure the session includes the given product role.
- * Redirects to /dashboard if not.
+ * Ensure the session includes the given product role (or, if an array is
+ * passed, at least one of the given product roles). Redirects to /dashboard
+ * if not.
  *
  * Usage:
  *   const session = await requireProductRole(ProductRole.SynqFundReferrer);
+ *   const session = await requireProductRole([ProductRole.CareConnectNetworkManager, ProductRole.CareConnectReferrerAdmin]);
  */
-export async function requireProductRole(role: ProductRoleValue): Promise<PlatformSession> {
+export async function requireProductRole(role: ProductRoleValue | ProductRoleValue[]): Promise<PlatformSession> {
   const session = await requireOrg();
-  if (!session.productRoles.includes(role)) redirect('/dashboard');
+  const roles = Array.isArray(role) ? role : [role];
+  if (!roles.some((r) => session.productRoles.includes(r))) redirect('/dashboard');
   return session;
 }
 

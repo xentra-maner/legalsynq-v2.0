@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
 
 import { careConnectApi } from "@/lib/careconnect-api";
@@ -13,15 +13,16 @@ import {
   stripPhone,
 } from "@/lib/phone";
 import { isValidUsZipCode } from "@/lib/address";
+import { networkDisplayName } from "@/lib/network-display-name";
 import type {
   NetworkDetail,
   NetworkProviderItem,
   NetworkProviderMarker,
   ProviderSearchResult,
   SpecialtyOption,
-  UpdateNetworkProviderRequest,
 } from "@/types/careconnect";
 import { Modal } from "../ui/modal";
+import { ProviderEditModal } from "@/components/careconnect/provider-edit-modal";
 
 const MyNetworkMap = dynamic(
   () =>
@@ -50,6 +51,12 @@ interface MyNetworkClientProps {
   initialNetwork: NetworkDetail | null;
   fetchError: string | null;
   specialtyOptions: SpecialtyOption[];
+  /** LSV3-1084: tenant display name used for the "{tenantName} Preferred Providers" heading. */
+  tenantName: string;
+  /** True for NetworkManager / TenantAdmin / PlatformAdmin — can edit/remove any provider. */
+  canManageAll: boolean;
+  /** The caller's own organization id — a CareConnectReferrerAdmin without canManageAll may only edit/remove providers their org added. */
+  callerOrgId?: string | null;
 }
 
 type PanelMode =
@@ -97,24 +104,6 @@ const EMPTY_NEW_FORM = {
   isMobile: false,
   serviceRadiusMiles: DEFAULT_SERVICE_RADIUS_MILES,
 };
-
-interface EditLocationForm {
-  entryId: string;
-  providerId: string;
-  facilityId: string;
-  facilityName: string;
-  email: string;
-  phone: string;
-  addressLine1: string;
-  city: string;
-  state: string;
-  postalCode: string;
-  isActive: boolean;
-  acceptingReferrals: boolean;
-  facilityIsActive: boolean;
-  isMobile: boolean;
-  serviceRadiusMiles: string;
-}
 
 function networkProviderEntryId(
   provider: Pick<NetworkProviderItem, "id" | "networkProviderId">,
@@ -173,6 +162,9 @@ export function MyNetworkClient({
   initialNetwork,
   fetchError,
   specialtyOptions,
+  tenantName,
+  canManageAll,
+  callerOrgId,
 }: MyNetworkClientProps) {
   const [network, setNetwork] = useState<NetworkDetail | null>(initialNetwork);
   const [providers, setProviders] = useState<NetworkProviderItem[]>(
@@ -210,17 +202,7 @@ export function MyNetworkClient({
   const [createError, setCreateError] = useState<string | null>(null);
   const [editingProvider, setEditingProvider] =
     useState<NetworkProviderItem | null>(null);
-  const [editLocations, setEditLocations] = useState<EditLocationForm[]>([]);
-  const [savingEdit, setSavingEdit] = useState(false);
-  const [savingLocationId, setSavingLocationId] = useState<string | null>(null);
-  const [deletingLocationId, setDeletingLocationId] = useState<string | null>(
-    null,
-  );
   const [removingId, setRemovingId] = useState<string | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<{
-    entryId: string;
-    displayName: string;
-  } | null>(null);
   const [removeTarget, setRemoveTarget] = useState<{
     providerId: string;
     providerName: string;
@@ -258,10 +240,10 @@ export function MyNetworkClient({
       !(Number(newForm.serviceRadiusMiles) > 0) ||
       Number(newForm.serviceRadiusMiles) > MAX_SERVICE_RADIUS_MILES);
   const hasNoSpecialty = newForm.specialtyIds.length === 0;
-  const activeEditLocations = useMemo(
-    () => editLocations.filter((l) => l.facilityIsActive),
-    [editLocations],
-  );
+  // LSV3-1084: a CareConnectReferrerAdmin may only add providers to a network their own
+  // organization created; a tenant-admin-owned (or NetworkManager-owned) network is view-only.
+  const canAddProviders =
+    canManageAll || (!!callerOrgId && network?.owningOrganizationId === callerOrgId);
   useEffect(() => {
     setNetworkUrl(window.location.origin + "/careconnect/network");
   }, []);
@@ -541,132 +523,6 @@ export function MyNetworkClient({
     return provider.providerId || provider.id;
   }
 
-  function providerLocationForms(
-    provider: NetworkProviderItem,
-    list: NetworkProviderItem[] = providers,
-  ): EditLocationForm[] {
-    const providerId = providerIdentityId(provider);
-    return list
-      .filter((p) => providerIdentityId(p) === providerId)
-      .slice()
-      .sort((a, b) => {
-        if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
-        return (a.facilityName || a.city || "").localeCompare(
-          b.facilityName || b.city || "",
-        );
-      })
-      .map(toEditLocationForm);
-  }
-
-  function toEditLocationForm(provider: NetworkProviderItem): EditLocationForm {
-    return {
-      entryId: networkProviderEntryId(provider),
-      providerId: providerIdentityId(provider),
-      facilityId: provider.facilityId,
-      facilityName:
-        provider.facilityName || provider.organizationName || provider.name,
-      email: provider.email ?? "",
-      phone: formatPhoneInput(provider.phone ?? ""),
-      addressLine1: provider.addressLine1 ?? "",
-      city: provider.city ?? "",
-      state: provider.state ?? "",
-      postalCode: provider.postalCode ?? "",
-      isActive: provider.isActive,
-      acceptingReferrals: provider.acceptingReferrals,
-      facilityIsActive: provider.facilityIsActive,
-      isMobile: provider.isMobile,
-      serviceRadiusMiles:
-        provider.serviceRadiusMiles != null
-          ? String(provider.serviceRadiusMiles)
-          : DEFAULT_SERVICE_RADIUS_MILES,
-    };
-  }
-
-  function updateEditLocation(
-    entryId: string,
-    patch: Partial<EditLocationForm>,
-  ) {
-    setEditLocations((prev) =>
-      prev.map((location) =>
-        location.entryId === entryId ? { ...location, ...patch } : location,
-      ),
-    );
-  }
-
-  function locationHasInvalidPostalCode(
-    location: Pick<EditLocationForm, "postalCode" | "isMobile">,
-  ): boolean {
-    return (
-      !location.isMobile &&
-      location.postalCode.trim().length > 0 &&
-      !isValidUsZipCode(location.postalCode)
-    );
-  }
-
-  function locationHasInvalidServiceRadius(
-    location: Pick<EditLocationForm, "isMobile" | "serviceRadiusMiles">,
-  ): boolean {
-    return (
-      location.isMobile &&
-      (!location.serviceRadiusMiles.trim() ||
-        !(Number(location.serviceRadiusMiles) > 0) ||
-        Number(location.serviceRadiusMiles) > MAX_SERVICE_RADIUS_MILES)
-    );
-  }
-
-  function validateProviderSetupFields(): boolean {
-    if (!newForm.firstName.trim() || !newForm.lastName.trim()) {
-      setCreateError("First name and last name are required.");
-      return false;
-    }
-    if (!newForm.email.trim()) {
-      setCreateError("Email is required.");
-      return false;
-    }
-    if (!newForm.phone.trim()) {
-      setCreateError("Phone is required.");
-      return false;
-    }
-    if (hasNoSpecialty) {
-      setCreateError("Select at least one specialty.");
-      return false;
-    }
-    if (hasInvalidPhone) return false;
-    return true;
-  }
-
-  function savedProviderLocationForms(): EditLocationForm[] {
-    if (!editingProvider) return [];
-    const providerId = providerIdentityId(editingProvider);
-    return providers
-      .filter((p) => providerIdentityId(p) === providerId)
-      .map(toEditLocationForm);
-  }
-
-  function buildProviderUpdatePayload(
-    location: EditLocationForm,
-  ): UpdateNetworkProviderRequest {
-    return {
-      title: newForm.title.trim() || null,
-      firstName: newForm.firstName.trim(),
-      lastName: newForm.lastName.trim(),
-      organizationName: newForm.organizationName.trim() || null,
-      email: newForm.email.trim(),
-      phone: stripPhone(newForm.phone),
-      addressLine1: location.addressLine1.trim(),
-      city: location.city.trim(),
-      state: location.state.trim().toUpperCase(),
-      postalCode: location.postalCode.trim() || null,
-      isActive: location.isActive,
-      acceptingReferrals: location.acceptingReferrals,
-      specialtyIds: newForm.specialtyIds,
-      isMobile: location.isMobile,
-      serviceRadiusMiles: location.isMobile
-        ? Number(location.serviceRadiusMiles)
-        : null,
-    };
-  }
-
   // ── Add panel open/close ──────────────────────────────────────────────────
 
   function openAddPanel() {
@@ -679,7 +535,6 @@ export function MyNetworkClient({
     setNewForm(EMPTY_NEW_FORM);
     setCreateError(null);
     setEditingProvider(null);
-    setEditLocations([]);
     setGeoLat(null);
     setGeoLng(null);
     setSelectedPostalCode(null);
@@ -695,45 +550,19 @@ export function MyNetworkClient({
     setCreateError(null);
     setSearchError(null);
     setEditingProvider(null);
-    setEditLocations([]);
-    setSavingLocationId(null);
-    setDeletingLocationId(null);
     setGeoLat(null);
     setGeoLng(null);
     setSelectedPostalCode(null);
   }
 
   function openEditPanel(provider: NetworkProviderItem) {
-    const { title, firstName, lastName } = splitProviderName(provider.name);
     setSearchResults(null);
     setSearchError(null);
     setConfirmTarget(null);
     setLocationTarget(null);
     setLocationReturnsToEdit(false);
     setEditingProvider(provider);
-    setEditLocations(providerLocationForms(provider));
     setCreateError(null);
-    setGeoLat(null);
-    setGeoLng(null);
-    setSelectedPostalCode(null);
-    setNewForm({
-      title: provider.title?.trim() || title,
-      firstName,
-      lastName,
-      organizationName: provider.organizationName ?? "",
-      email: provider.email ?? "",
-      phone: formatPhoneInput(provider.phone ?? ""),
-      addressLine1: provider.addressLine1 ?? "",
-      city: provider.city ?? "",
-      state: provider.state ?? "",
-      postalCode: provider.postalCode ?? "",
-      npi: "",
-      isActive: provider.isActive,
-      acceptingReferrals: provider.acceptingReferrals,
-      specialtyIds: provider.specialties?.map((s) => s.id) ?? [],
-      isMobile: false,
-      serviceRadiusMiles: DEFAULT_SERVICE_RADIUS_MILES,
-    });
     setPanelMode("edit");
   }
 
@@ -743,7 +572,6 @@ export function MyNetworkClient({
     setLocationTarget(provider);
     setLocationReturnsToEdit(false);
     setEditingProvider(null);
-    setEditLocations([]);
     setCreateError(null);
     setSearchError(null);
     setAddrSuggestions([]);
@@ -765,58 +593,6 @@ export function MyNetworkClient({
       npi: provider.npi ?? "",
       isActive: true,
       acceptingReferrals: provider.acceptingReferrals,
-      specialtyIds: provider.specialties?.map((s) => s.id) ?? [],
-      isMobile: false,
-      serviceRadiusMiles: DEFAULT_SERVICE_RADIUS_MILES,
-    });
-    setPanelMode("location");
-  }
-
-  function openAddLocationFromEdit(provider: NetworkProviderItem) {
-    const { title, firstName, lastName } = splitProviderName(provider.name);
-    setConfirmTarget(null);
-    setLocationTarget({
-      id: providerIdentityId(provider),
-      facilityId: null,
-      facilityName: null,
-      name: provider.name,
-      title: provider.title,
-      organizationName: provider.organizationName,
-      email: provider.email,
-      phone: provider.phone,
-      city: "",
-      state: "",
-      addressLine1: "",
-      postalCode: "",
-      isActive: true,
-      acceptingReferrals: true,
-      accessStage: provider.accessStage,
-      specialties: provider.specialties,
-      primarySpecialtyId: provider.primarySpecialtyId,
-      primarySpecialty: provider.primarySpecialty,
-    });
-    setLocationReturnsToEdit(true);
-    setCreateError(null);
-    setSearchError(null);
-    setAddrSuggestions([]);
-    setAddrOpen(false);
-    setGeoLat(null);
-    setGeoLng(null);
-    setSelectedPostalCode(null);
-    setNewForm({
-      title: provider.title?.trim() || title,
-      firstName,
-      lastName,
-      organizationName: provider.organizationName ?? provider.name,
-      email: provider.email ?? "",
-      phone: formatPhoneInput(provider.phone ?? ""),
-      addressLine1: "",
-      city: "",
-      state: "",
-      postalCode: "",
-      npi: "",
-      isActive: true,
-      acceptingReferrals: true,
       specialtyIds: provider.specialties?.map((s) => s.id) ?? [],
       isMobile: false,
       serviceRadiusMiles: DEFAULT_SERVICE_RADIUS_MILES,
@@ -1037,15 +813,7 @@ export function MyNetworkClient({
       }
       setMarkersLoaded(false);
       showToast(`${locationTarget.name} location added to your network.`);
-      if (locationReturnsToEdit && editingProvider) {
-        setEditLocations(providerLocationForms(editingProvider, nextProviders));
-        setLocationReturnsToEdit(false);
-        setLocationTarget(null);
-        setCreateError(null);
-        setPanelMode("edit");
-      } else {
-        closeAddPanel();
-      }
+      closeAddPanel();
     } catch (err: unknown) {
       setCreateError(
         err instanceof Error
@@ -1054,189 +822,6 @@ export function MyNetworkClient({
       );
     } finally {
       setCreating(false);
-    }
-  }
-
-  function applyProviderUpdate(updated: NetworkProviderItem) {
-    const entryId = networkProviderEntryId(updated);
-    setProviders((prev) =>
-      prev.map((p) => {
-        if (providerIdentityId(p) !== providerIdentityId(updated)) return p;
-        if (networkProviderEntryId(p) === entryId) return updated;
-        return {
-          ...p,
-          name: updated.name,
-          title: updated.title,
-          organizationName: updated.organizationName,
-          email: updated.email,
-          phone: updated.phone,
-          accessStage: updated.accessStage,
-          specialties: updated.specialties,
-          primarySpecialtyId: updated.primarySpecialtyId,
-          primarySpecialty: updated.primarySpecialty,
-        };
-      }),
-    );
-  }
-
-  async function handleUpdateLocation(e: React.FormEvent, entryId: string) {
-    e.preventDefault();
-    if (!network || !editingProvider) return;
-    const location = editLocations.find((item) => item.entryId === entryId);
-    if (!location) return;
-    if (!validateProviderSetupFields()) return;
-    if (
-      hasInvalidPhone ||
-      locationHasInvalidPostalCode(location) ||
-      locationHasInvalidServiceRadius(location)
-    )
-      return;
-
-    const payload = buildProviderUpdatePayload(location);
-
-    setSavingEdit(true);
-    setSavingLocationId(entryId);
-    setCreateError(null);
-    try {
-      const { data } = await careConnectApi.networks.updateProvider(
-        network.id,
-        entryId,
-        payload,
-      );
-      applyProviderUpdate(data);
-      setEditLocations((prev) =>
-        prev.map((item) =>
-          item.entryId === entryId ? toEditLocationForm(data) : item,
-        ),
-      );
-      setEditingProvider(data);
-      setMarkersLoaded(false);
-      showToast(`${data.facilityName || data.name} updated.`);
-    } catch (err: unknown) {
-      setCreateError(
-        err instanceof Error
-          ? err.message
-          : "Failed to update provider location. Please try again.",
-      );
-    } finally {
-      setSavingEdit(false);
-      setSavingLocationId(null);
-    }
-  }
-
-  async function handleUpdateProviderSetup() {
-    if (!network || !editingProvider) return;
-    if (!validateProviderSetupFields()) return;
-
-    const locations = savedProviderLocationForms();
-    if (locations.length === 0) {
-      setCreateError(
-        "At least one location is required before saving provider setup.",
-      );
-      return;
-    }
-
-    setSavingEdit(true);
-    setSavingLocationId(null);
-    setCreateError(null);
-    try {
-      const updatedItems: NetworkProviderItem[] = [];
-      for (const location of locations) {
-        const { data } = await careConnectApi.networks.updateProvider(
-          network.id,
-          location.entryId,
-          buildProviderUpdatePayload(location),
-        );
-        updatedItems.push(data);
-        applyProviderUpdate(data);
-      }
-
-      const latest = updatedItems[updatedItems.length - 1];
-      if (latest) {
-        setEditingProvider(latest);
-        setEditLocations((prev) =>
-          prev.map((item) => {
-            const updated = updatedItems.find(
-              (p) => networkProviderEntryId(p) === item.entryId,
-            );
-            return updated ? toEditLocationForm(updated) : item;
-          }),
-        );
-      }
-      setMarkersLoaded(false);
-      showToast(`${providerDisplayName(newForm)} provider setup updated.`);
-    } catch (err: unknown) {
-      setCreateError(
-        err instanceof Error
-          ? err.message
-          : "Failed to update provider setup. Please try again.",
-      );
-    } finally {
-      setSavingEdit(false);
-    }
-  }
-
-  // ── Delete location (Facilities panel "Delete location" button only) ──
-
-  function requestDeleteLocation(
-    entryId: string,
-    displayName: string,
-    providerIdentity: string,
-  ) {
-    const remainingCount = providers.filter(
-      (p) => providerIdentityId(p) === providerIdentity && p.facilityIsActive,
-    ).length;
-    if (remainingCount <= 1) {
-      const message =
-        "A provider must have at least one location. Add another location before deleting this one.";
-      setCreateError(message);
-      return;
-    }
-    setDeleteTarget({ entryId, displayName });
-  }
-
-  async function confirmDeleteLocation() {
-    if (!network || !deleteTarget) return;
-    const { entryId, displayName } = deleteTarget;
-    setDeletingLocationId(entryId);
-    setCreateError(null);
-    try {
-      await careConnectApi.networks.removeProvider(network.id, entryId, true);
-      // This specific row's own location was just deleted, so hide it regardless of
-      // whether the backend happened to leave the underlying (possibly shared) Facility
-      // row active for another membership — that's a different row, keyed separately.
-      setProviders((prev) =>
-        prev.map((p) =>
-          networkProviderEntryId(p) === entryId
-            ? {
-                ...p,
-                isActive: false,
-                acceptingReferrals: false,
-                facilityIsActive: false,
-              }
-            : p,
-        ),
-      );
-      setEditLocations((prev) =>
-        prev.map((item) =>
-          item.entryId === entryId
-            ? {
-                ...item,
-                isActive: false,
-                acceptingReferrals: false,
-                facilityIsActive: false,
-              }
-            : item,
-        ),
-      );
-      setMarkersLoaded(false);
-      showToast(`${displayName || "Location"} deleted.`);
-      setDeleteTarget(null);
-    } catch {
-      setCreateError("Failed to delete provider location. Please try again.");
-      showToast("Failed to delete provider location. Please try again.");
-    } finally {
-      setDeletingLocationId(null);
     }
   }
 
@@ -1338,19 +923,7 @@ export function MyNetworkClient({
         </div>
       )}
 
-      {/* Delete location confirmation */}
-      <ConfirmDialog
-        open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={confirmDeleteLocation}
-        title="Delete location?"
-        description={`Delete ${deleteTarget?.displayName || "this location"}? This will mark it inactive and stop accepting referrals.`}
-        confirmLabel="Delete location"
-        confirmVariant="danger"
-        loading={!!deletingLocationId}
-      />
-
-      {/* Remove from network confirmation (distinct from Delete location above — no Facility cascade) */}
+      {/* Remove from network confirmation (distinct from Delete location, owned by ProviderEditModal — no Facility cascade) */}
       <ConfirmDialog
         open={!!removeTarget}
         onClose={() => setRemoveTarget(null)}
@@ -1367,18 +940,13 @@ export function MyNetworkClient({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-3">
             <h1 className="text-xl font-semibold text-gray-900">
-              {network.name}
+              {networkDisplayName(network, tenantName)}
             </h1>
             <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700 border border-blue-200">
               {visibleProviders.length}{" "}
               {visibleProviders.length === 1 ? "provider" : "providers"}
             </span>
           </div>
-          {network.description && (
-            <p className="text-sm text-gray-500 mt-0.5">
-              {network.description}
-            </p>
-          )}
 
           {/* Network URL */}
           {networkUrl && (
@@ -1420,7 +988,7 @@ export function MyNetworkClient({
           )}
         </div>
 
-        {panelMode === "closed" && (
+        {panelMode === "closed" && canAddProviders && (
           <button
             onClick={openAddPanel}
             className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors shrink-0"
@@ -1432,17 +1000,15 @@ export function MyNetworkClient({
       </div>
 
       {/* ── Add Provider Panel ──────────────────────────────────────────── */}
-      {panelMode !== "closed" && (
+      {panelMode !== "closed" && panelMode !== "edit" && (
         <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-5">
           {/* Panel header */}
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-semibold text-gray-900">
-                {panelMode === "edit"
-                  ? "Edit Provider"
-                  : panelMode === "location"
-                    ? "Add Provider Location"
-                    : "Add Provider"}
+                {panelMode === "location"
+                  ? "Add Provider Location"
+                  : "Add Provider"}
               </h2>
               {panelMode === "confirm" && (
                 <span className="text-xs text-blue-700 bg-blue-100 border border-blue-200 rounded-full px-2 py-0.5">
@@ -1457,11 +1023,6 @@ export function MyNetworkClient({
               {panelMode === "location" && (
                 <span className="text-xs text-cyan-700 bg-cyan-50 border border-cyan-200 rounded-full px-2 py-0.5">
                   New Location
-                </span>
-              )}
-              {panelMode === "edit" && (
-                <span className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
-                  Provider Setup
                 </span>
               )}
             </div>
@@ -2359,10 +1920,10 @@ export function MyNetworkClient({
                 <div className="flex items-center gap-2">
                   <button
                     type="submit"
-                    disabled={creating || savingEdit}
+                    disabled={creating}
                     className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
                   >
-                    {creating || savingEdit ? (
+                    {creating ? (
                       <>
                         <span className="h-3.5 w-3.5 rounded-full border-2 border-white/60 border-t-transparent animate-spin" />
                         Adding…
@@ -2403,1013 +1964,19 @@ export function MyNetworkClient({
             </div>
           )}
 
-          {/* ── Edit mode ── */}
-          {panelMode === "edit" && editingProvider && (
-            <div className="space-y-4">
-              <p className="text-xs text-violet-800 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2">
-                <i className="ri-information-line mr-1" />
-                Update provider setup details and manage each facility/location
-                in this network. Specialty is required before saving changes.
-              </p>
-
-              <div className="space-y-3">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Title
-                    </label>
-                    <input
-                      value={newForm.title}
-                      onChange={(e) =>
-                        setNewForm((f) => ({ ...f, title: e.target.value }))
-                      }
-                      placeholder="Dr."
-                      maxLength={50}
-                      className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      First name *
-                    </label>
-                    <input
-                      required
-                      value={newForm.firstName}
-                      onChange={(e) =>
-                        setNewForm((f) => ({ ...f, firstName: e.target.value }))
-                      }
-                      placeholder="Jane"
-                      className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Last name *
-                    </label>
-                    <input
-                      required
-                      value={newForm.lastName}
-                      onChange={(e) =>
-                        setNewForm((f) => ({ ...f, lastName: e.target.value }))
-                      }
-                      placeholder="Smith"
-                      className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Organization / Practice
-                    </label>
-                    <input
-                      value={newForm.organizationName}
-                      onChange={(e) =>
-                        setNewForm((f) => ({
-                          ...f,
-                          organizationName: e.target.value,
-                        }))
-                      }
-                      placeholder="Smith Family Practice"
-                      className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Email *
-                    </label>
-                    <input
-                      required
-                      type="email"
-                      value={newForm.email}
-                      onChange={(e) =>
-                        setNewForm((f) => ({ ...f, email: e.target.value }))
-                      }
-                      placeholder="jane@example.com"
-                      className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Phone *
-                    </label>
-                    <input
-                      required
-                      type="tel"
-                      value={newForm.phone}
-                      onChange={(e) =>
-                        setNewForm((f) => ({
-                          ...f,
-                          phone: formatPhoneInput(e.target.value),
-                        }))
-                      }
-                      placeholder="(555) 555-5555"
-                      className={`w-full rounded-md border bg-white px-3 py-1.5 text-sm focus:outline-none ${
-                        hasInvalidPhone
-                          ? "border-red-300 focus:border-red-400"
-                          : "border-gray-300 focus:border-blue-500"
-                      }`}
-                    />
-                    {hasInvalidPhone && (
-                      <p className="text-xs text-red-500 mt-1">
-                        Phone number must be 10 digits.
-                      </p>
-                    )}
-                  </div>
-                  <div className="lg:col-span-3">
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Specialty *
-                    </label>
-                    <div
-                      className={`rounded-md border bg-white p-2 ${
-                        hasNoSpecialty &&
-                        createError === "Select at least one specialty."
-                          ? "border-red-300"
-                          : "border-gray-300"
-                      }`}
-                    >
-                      {specialtyOptions.length === 0 ? (
-                        <p className="text-xs text-gray-400">
-                          No active specialties are configured.
-                        </p>
-                      ) : (
-                        <div className="grid gap-1 sm:grid-cols-2">
-                          {specialtyOptions.map((s) => (
-                            <label
-                              key={s.id}
-                              className="flex items-center gap-2 rounded px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={newForm.specialtyIds.includes(s.id)}
-                                onChange={() => toggleSpecialty(s.id)}
-                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                              />
-                              <span>{s.name}</span>
-                            </label>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    {hasNoSpecialty &&
-                      createError === "Select at least one specialty." && (
-                        <p className="text-xs text-red-500 mt-1">
-                          Select at least one specialty.
-                        </p>
-                      )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center justify-end gap-3">
-                {createError && (
-                  <p className="mr-auto text-xs text-red-600">{createError}</p>
-                )}
-                <button
-                  type="button"
-                  onClick={handleUpdateProviderSetup}
-                  disabled={
-                    savingEdit || editLocations.length === 0 || hasInvalidPhone
-                  }
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
-                >
-                  {savingEdit && savingLocationId === null ? (
-                    <>
-                      <span className="h-3.5 w-3.5 rounded-full border-2 border-white/60 border-t-transparent animate-spin" />
-                      Saving…
-                    </>
-                  ) : (
-                    <>
-                      <i className="ri-save-line" />
-                      Save Provider Setup
-                    </>
-                  )}
-                </button>
-              </div>
-
-              <div className="flex items-center justify-between border-t border-blue-100 pt-4">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Facilities
-                </h3>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-gray-400">
-                    {activeEditLocations.length} location
-                    {activeEditLocations.length === 1 ? "" : "s"}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => openAddLocationFromEdit(editingProvider)}
-                    className="inline-flex items-center gap-1 rounded-md border border-cyan-300 bg-white px-2.5 py-1 text-xs font-medium text-cyan-700 hover:bg-cyan-50 transition-colors"
-                  >
-                    <i className="ri-map-pin-add-line" />
-                    Add location
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                {activeEditLocations.map((location, index) => {
-                  const invalidZip = locationHasInvalidPostalCode(location);
-                  const invalidRadius =
-                    locationHasInvalidServiceRadius(location);
-                  const saving = savingLocationId === location.entryId;
-                  const deleting = deletingLocationId === location.entryId;
-                  const isLastRemainingLocation =
-                    activeEditLocations.length <= 1;
-
-                  return (
-                    <form
-                      key={location.entryId}
-                      onSubmit={(e) =>
-                        handleUpdateLocation(e, location.entryId)
-                      }
-                      className="rounded-lg border border-gray-200 bg-white p-4 space-y-3"
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-sm font-semibold text-gray-900">
-                              Location {index + 1}
-                            </p>
-                            <span
-                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium border ${
-                                location.isActive
-                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                  : "bg-gray-50 text-gray-500 border-gray-200"
-                              }`}
-                            >
-                              {location.isActive ? "Active" : "Inactive"}
-                            </span>
-                            <span
-                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium border ${
-                                location.acceptingReferrals
-                                  ? "bg-green-50 text-green-700 border-green-200"
-                                  : "bg-amber-50 text-amber-700 border-amber-200"
-                              }`}
-                            >
-                              {location.acceptingReferrals
-                                ? "Accepting"
-                                : "Not accepting"}
-                            </span>
-                          </div>
-                          <p className="mt-0.5 truncate text-xs text-gray-500">
-                            {formatLocationLine({
-                              ...location,
-                              serviceRadiusMiles: Number(
-                                location.serviceRadiusMiles,
-                              ),
-                            })}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            requestDeleteLocation(
-                              location.entryId,
-                              location.facilityName,
-                              location.providerId,
-                            )
-                          }
-                          disabled={
-                            deleting || saving || isLastRemainingLocation
-                          }
-                          title={
-                            isLastRemainingLocation
-                              ? "A provider must have at least one location"
-                              : undefined
-                          }
-                          className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          <i
-                            className={
-                              deleting
-                                ? "ri-loader-4-line animate-spin"
-                                : "ri-delete-bin-line"
-                            }
-                          />
-                          {deleting ? "Deleting…" : "Delete location"}
-                        </button>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          id={`locationIsMobile-${location.entryId}`}
-                          checked={location.isMobile}
-                          onChange={(e) =>
-                            updateEditLocation(location.entryId, {
-                              isMobile: e.target.checked,
-                              postalCode: e.target.checked
-                                ? ""
-                                : location.postalCode,
-                            })
-                          }
-                          className="h-3.5 w-3.5 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
-                        />
-                        <label
-                          htmlFor={`locationIsMobile-${location.entryId}`}
-                          className="text-xs font-medium text-gray-600"
-                        >
-                          Mobile / roaming provider (no fixed address)
-                        </label>
-                      </div>
-                      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                        <div className="lg:col-span-2">
-                          <label className="block text-xs font-medium text-gray-600 mb-1">
-                            {location.isMobile
-                              ? "Service area description *"
-                              : "Address *"}
-                          </label>
-                          <input
-                            required
-                            value={location.addressLine1}
-                            onChange={(e) =>
-                              updateEditLocation(location.entryId, {
-                                addressLine1: e.target.value,
-                              })
-                            }
-                            placeholder={
-                              location.isMobile
-                                ? "e.g. Greater Las Vegas Metro"
-                                : "123 Main St"
-                            }
-                            className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-600 mb-1">
-                            City *
-                          </label>
-                          <input
-                            required
-                            value={location.city}
-                            onChange={(e) =>
-                              updateEditLocation(location.entryId, {
-                                city: e.target.value,
-                              })
-                            }
-                            className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-                          />
-                        </div>
-                        <div className="flex gap-2">
-                          <div className="flex-1">
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
-                              State *
-                            </label>
-                            <input
-                              required
-                              value={location.state}
-                              onChange={(e) =>
-                                updateEditLocation(location.entryId, {
-                                  state: e.target.value,
-                                })
-                              }
-                              placeholder="IL"
-                              maxLength={2}
-                              className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm uppercase focus:border-blue-500 focus:outline-none"
-                            />
-                          </div>
-                          <div className="flex-1">
-                            {location.isMobile ? (
-                              <>
-                                <label className="block text-xs font-medium text-gray-600 mb-1">
-                                  Service radius (mi) *
-                                </label>
-                                <input
-                                  required
-                                  type="number"
-                                  min={1}
-                                  max={MAX_SERVICE_RADIUS_MILES}
-                                  value={location.serviceRadiusMiles}
-                                  onChange={(e) =>
-                                    updateEditLocation(location.entryId, {
-                                      serviceRadiusMiles: e.target.value,
-                                    })
-                                  }
-                                  className={`w-full rounded-md border bg-white px-3 py-1.5 text-sm focus:outline-none ${
-                                    invalidRadius
-                                      ? "border-red-300 focus:border-red-400"
-                                      : "border-gray-300 focus:border-blue-500"
-                                  }`}
-                                />
-                                {invalidRadius && (
-                                  <p className="text-xs text-red-500 mt-1">
-                                    Enter a radius between 1 and{" "}
-                                    {MAX_SERVICE_RADIUS_MILES} miles.
-                                  </p>
-                                )}
-                              </>
-                            ) : (
-                              <>
-                                <label className="block text-xs font-medium text-gray-600 mb-1">
-                                  ZIP *
-                                </label>
-                                <input
-                                  required
-                                  value={location.postalCode}
-                                  onChange={(e) =>
-                                    updateEditLocation(location.entryId, {
-                                      postalCode: e.target.value,
-                                    })
-                                  }
-                                  placeholder="60601"
-                                  className={`w-full rounded-md border bg-white px-3 py-1.5 text-sm focus:outline-none ${
-                                    invalidZip
-                                      ? "border-red-300 focus:border-red-400"
-                                      : "border-gray-300 focus:border-blue-500"
-                                  }`}
-                                />
-                                {invalidZip && (
-                                  <p className="text-xs text-red-500 mt-1">
-                                    ZIP code must be 5 digits or 5+4 format.
-                                  </p>
-                                )}
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-3">
-                        <div className="flex items-center gap-5">
-                          <label className="flex items-center gap-2 cursor-pointer select-none">
-                            <input
-                              type="checkbox"
-                              checked={location.isActive}
-                              onChange={(e) =>
-                                updateEditLocation(location.entryId, {
-                                  isActive: e.target.checked,
-                                })
-                              }
-                              className="rounded border-gray-300 text-blue-600"
-                            />
-                            <span className="text-xs text-gray-700">
-                              Active
-                            </span>
-                          </label>
-                          <label className="flex items-center gap-2 cursor-pointer select-none">
-                            <input
-                              type="checkbox"
-                              checked={location.acceptingReferrals}
-                              onChange={(e) =>
-                                updateEditLocation(location.entryId, {
-                                  acceptingReferrals: e.target.checked,
-                                })
-                              }
-                              className="rounded border-gray-300 text-blue-600"
-                            />
-                            <span className="text-xs text-gray-700">
-                              Accepting referrals
-                            </span>
-                          </label>
-                        </div>
-                        <button
-                          type="submit"
-                          disabled={
-                            savingEdit ||
-                            deleting ||
-                            hasInvalidPhone ||
-                            invalidZip ||
-                            invalidRadius
-                          }
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
-                        >
-                          {saving ? (
-                            <>
-                              <span className="h-3.5 w-3.5 rounded-full border-2 border-white/60 border-t-transparent animate-spin" />
-                              Saving…
-                            </>
-                          ) : (
-                            <>
-                              <i className="ri-save-line" />
-                              Save Location
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </form>
-                  );
-                })}
-              </div>
-
-              <button
-                type="button"
-                onClick={closeAddPanel}
-                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
-              >
-                Close
-              </button>
-            </div>
-          )}
-          <Modal
-            size="xl"
-            open={panelMode == "edit"}
-            onClose={() => setPanelMode("closed")}
-            title="Edit Provider"
-          >
-            <div className="space-y-4">
-              <p className="text-xs text-violet-800 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2">
-                <i className="ri-information-line mr-1" />
-                Update provider setup details and manage each facility/location
-                in this network. Specialty is required before saving changes.
-              </p>
-
-              <div className="space-y-3">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Title
-                    </label>
-                    <input
-                      value={newForm.title}
-                      onChange={(e) =>
-                        setNewForm((f) => ({ ...f, title: e.target.value }))
-                      }
-                      placeholder="Dr."
-                      maxLength={50}
-                      className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      First name *
-                    </label>
-                    <input
-                      required
-                      value={newForm.firstName}
-                      onChange={(e) =>
-                        setNewForm((f) => ({ ...f, firstName: e.target.value }))
-                      }
-                      placeholder="Jane"
-                      className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Last name *
-                    </label>
-                    <input
-                      required
-                      value={newForm.lastName}
-                      onChange={(e) =>
-                        setNewForm((f) => ({ ...f, lastName: e.target.value }))
-                      }
-                      placeholder="Smith"
-                      className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Organization / Practice
-                    </label>
-                    <input
-                      value={newForm.organizationName}
-                      onChange={(e) =>
-                        setNewForm((f) => ({
-                          ...f,
-                          organizationName: e.target.value,
-                        }))
-                      }
-                      placeholder="Smith Family Practice"
-                      className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Email *
-                    </label>
-                    <input
-                      required
-                      type="email"
-                      value={newForm.email}
-                      onChange={(e) =>
-                        setNewForm((f) => ({ ...f, email: e.target.value }))
-                      }
-                      placeholder="jane@example.com"
-                      className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Phone *
-                    </label>
-                    <input
-                      required
-                      type="tel"
-                      value={newForm.phone}
-                      onChange={(e) =>
-                        setNewForm((f) => ({
-                          ...f,
-                          phone: formatPhoneInput(e.target.value),
-                        }))
-                      }
-                      placeholder="(555) 555-5555"
-                      className={`w-full rounded-md border bg-white px-3 py-1.5 text-sm focus:outline-none ${
-                        hasInvalidPhone
-                          ? "border-red-300 focus:border-red-400"
-                          : "border-gray-300 focus:border-blue-500"
-                      }`}
-                    />
-                    {hasInvalidPhone && (
-                      <p className="text-xs text-red-500 mt-1">
-                        Phone number must be 10 digits.
-                      </p>
-                    )}
-                  </div>
-                  <div className="lg:col-span-3">
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Specialty *
-                    </label>
-                    <div
-                      className={`rounded-md border bg-white p-2 ${
-                        hasNoSpecialty &&
-                        createError === "Select at least one specialty."
-                          ? "border-red-300"
-                          : "border-gray-300"
-                      }`}
-                    >
-                      {specialtyOptions.length === 0 ? (
-                        <p className="text-xs text-gray-400">
-                          No active specialties are configured.
-                        </p>
-                      ) : (
-                        <div className="grid gap-1 sm:grid-cols-2">
-                          {specialtyOptions.map((s) => (
-                            <label
-                              key={s.id}
-                              className="flex items-center gap-2 rounded px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={newForm.specialtyIds.includes(s.id)}
-                                onChange={() => toggleSpecialty(s.id)}
-                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                              />
-                              <span>{s.name}</span>
-                            </label>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    {hasNoSpecialty &&
-                      createError === "Select at least one specialty." && (
-                        <p className="text-xs text-red-500 mt-1">
-                          Select at least one specialty.
-                        </p>
-                      )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center justify-end gap-3">
-                {createError && (
-                  <p className="mr-auto text-xs text-red-600">{createError}</p>
-                )}
-                <button
-                  type="button"
-                  onClick={handleUpdateProviderSetup}
-                  disabled={
-                    savingEdit || editLocations.length === 0 || hasInvalidPhone
-                  }
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
-                >
-                  {savingEdit && savingLocationId === null ? (
-                    <>
-                      <span className="h-3.5 w-3.5 rounded-full border-2 border-white/60 border-t-transparent animate-spin" />
-                      Saving…
-                    </>
-                  ) : (
-                    <>
-                      <i className="ri-save-line" />
-                      Save Provider Setup
-                    </>
-                  )}
-                </button>
-              </div>
-
-              <div className="flex items-center justify-between border-t border-blue-100 pt-4">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Facilities
-                </h3>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-gray-400">
-                    {activeEditLocations.length} location
-                    {activeEditLocations.length === 1 ? "" : "s"}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      editingProvider
-                        ? openAddLocationFromEdit(editingProvider)
-                        : {};
-                    }}
-                    className="inline-flex items-center gap-1 rounded-md border border-cyan-300 bg-white px-2.5 py-1 text-xs font-medium text-cyan-700 hover:bg-cyan-50 transition-colors"
-                  >
-                    <i className="ri-map-pin-add-line" />
-                    Add location
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                {activeEditLocations.map((location, index) => {
-                  const invalidZip = locationHasInvalidPostalCode(location);
-                  const invalidRadius =
-                    locationHasInvalidServiceRadius(location);
-                  const saving = savingLocationId === location.entryId;
-                  const deleting = deletingLocationId === location.entryId;
-                  const isLastRemainingLocation =
-                    activeEditLocations.length <= 1;
-
-                  return (
-                    <form
-                      key={location.entryId}
-                      onSubmit={(e) =>
-                        handleUpdateLocation(e, location.entryId)
-                      }
-                      className="rounded-lg border border-gray-200 bg-white p-4 space-y-3"
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-sm font-semibold text-gray-900">
-                              Location {index + 1}
-                            </p>
-                            <span
-                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium border ${
-                                location.isActive
-                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                  : "bg-gray-50 text-gray-500 border-gray-200"
-                              }`}
-                            >
-                              {location.isActive ? "Active" : "Inactive"}
-                            </span>
-                            <span
-                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium border ${
-                                location.acceptingReferrals
-                                  ? "bg-green-50 text-green-700 border-green-200"
-                                  : "bg-amber-50 text-amber-700 border-amber-200"
-                              }`}
-                            >
-                              {location.acceptingReferrals
-                                ? "Accepting"
-                                : "Not accepting"}
-                            </span>
-                          </div>
-                          <p className="mt-0.5 truncate text-xs text-gray-500">
-                            {formatLocationLine({
-                              ...location,
-                              serviceRadiusMiles: Number(
-                                location.serviceRadiusMiles,
-                              ),
-                            })}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            requestDeleteLocation(
-                              location.entryId,
-                              location.facilityName,
-                              location.providerId,
-                            )
-                          }
-                          disabled={
-                            deleting || saving || isLastRemainingLocation
-                          }
-                          title={
-                            isLastRemainingLocation
-                              ? "A provider must have at least one location"
-                              : undefined
-                          }
-                          className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          <i
-                            className={
-                              deleting
-                                ? "ri-loader-4-line animate-spin"
-                                : "ri-delete-bin-line"
-                            }
-                          />
-                          {deleting ? "Deleting…" : "Delete location"}
-                        </button>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          id={`locationIsMobile-${location.entryId}`}
-                          checked={location.isMobile}
-                          onChange={(e) =>
-                            updateEditLocation(location.entryId, {
-                              isMobile: e.target.checked,
-                              postalCode: e.target.checked
-                                ? ""
-                                : location.postalCode,
-                            })
-                          }
-                          className="h-3.5 w-3.5 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
-                        />
-                        <label
-                          htmlFor={`locationIsMobile-${location.entryId}`}
-                          className="text-xs font-medium text-gray-600"
-                        >
-                          Mobile / roaming provider (no fixed address)
-                        </label>
-                      </div>
-                      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                        <div className="lg:col-span-2">
-                          <label className="block text-xs font-medium text-gray-600 mb-1">
-                            {location.isMobile
-                              ? "Service area description *"
-                              : "Address *"}
-                          </label>
-                          <input
-                            required
-                            value={location.addressLine1}
-                            onChange={(e) =>
-                              updateEditLocation(location.entryId, {
-                                addressLine1: e.target.value,
-                              })
-                            }
-                            placeholder={
-                              location.isMobile
-                                ? "e.g. Greater Las Vegas Metro"
-                                : "123 Main St"
-                            }
-                            className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-600 mb-1">
-                            City *
-                          </label>
-                          <input
-                            required
-                            value={location.city}
-                            onChange={(e) =>
-                              updateEditLocation(location.entryId, {
-                                city: e.target.value,
-                              })
-                            }
-                            className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-                          />
-                        </div>
-                        <div className="flex gap-2">
-                          <div className="flex-1">
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
-                              State *
-                            </label>
-                            <input
-                              required
-                              value={location.state}
-                              onChange={(e) =>
-                                updateEditLocation(location.entryId, {
-                                  state: e.target.value,
-                                })
-                              }
-                              placeholder="IL"
-                              maxLength={2}
-                              className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm uppercase focus:border-blue-500 focus:outline-none"
-                            />
-                          </div>
-                          <div className="flex-1">
-                            {location.isMobile ? (
-                              <>
-                                <label className="block text-xs font-medium text-gray-600 mb-1">
-                                  Service radius (mi) *
-                                </label>
-                                <input
-                                  required
-                                  type="number"
-                                  min={1}
-                                  max={MAX_SERVICE_RADIUS_MILES}
-                                  value={location.serviceRadiusMiles}
-                                  onChange={(e) =>
-                                    updateEditLocation(location.entryId, {
-                                      serviceRadiusMiles: e.target.value,
-                                    })
-                                  }
-                                  className={`w-full rounded-md border bg-white px-3 py-1.5 text-sm focus:outline-none ${
-                                    invalidRadius
-                                      ? "border-red-300 focus:border-red-400"
-                                      : "border-gray-300 focus:border-blue-500"
-                                  }`}
-                                />
-                                {invalidRadius && (
-                                  <p className="text-xs text-red-500 mt-1">
-                                    Enter a radius between 1 and{" "}
-                                    {MAX_SERVICE_RADIUS_MILES} miles.
-                                  </p>
-                                )}
-                              </>
-                            ) : (
-                              <>
-                                <label className="block text-xs font-medium text-gray-600 mb-1">
-                                  ZIP *
-                                </label>
-                                <input
-                                  required
-                                  value={location.postalCode}
-                                  onChange={(e) =>
-                                    updateEditLocation(location.entryId, {
-                                      postalCode: e.target.value,
-                                    })
-                                  }
-                                  placeholder="60601"
-                                  className={`w-full rounded-md border bg-white px-3 py-1.5 text-sm focus:outline-none ${
-                                    invalidZip
-                                      ? "border-red-300 focus:border-red-400"
-                                      : "border-gray-300 focus:border-blue-500"
-                                  }`}
-                                />
-                                {invalidZip && (
-                                  <p className="text-xs text-red-500 mt-1">
-                                    ZIP code must be 5 digits or 5+4 format.
-                                  </p>
-                                )}
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-3">
-                        <div className="flex items-center gap-5">
-                          <label className="flex items-center gap-2 cursor-pointer select-none">
-                            <input
-                              type="checkbox"
-                              checked={location.isActive}
-                              onChange={(e) =>
-                                updateEditLocation(location.entryId, {
-                                  isActive: e.target.checked,
-                                })
-                              }
-                              className="rounded border-gray-300 text-blue-600"
-                            />
-                            <span className="text-xs text-gray-700">
-                              Active
-                            </span>
-                          </label>
-                          <label className="flex items-center gap-2 cursor-pointer select-none">
-                            <input
-                              type="checkbox"
-                              checked={location.acceptingReferrals}
-                              onChange={(e) =>
-                                updateEditLocation(location.entryId, {
-                                  acceptingReferrals: e.target.checked,
-                                })
-                              }
-                              className="rounded border-gray-300 text-blue-600"
-                            />
-                            <span className="text-xs text-gray-700">
-                              Accepting referrals
-                            </span>
-                          </label>
-                        </div>
-                        <button
-                          type="submit"
-                          disabled={
-                            savingEdit ||
-                            deleting ||
-                            hasInvalidPhone ||
-                            invalidZip ||
-                            invalidRadius
-                          }
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
-                        >
-                          {saving ? (
-                            <>
-                              <span className="h-3.5 w-3.5 rounded-full border-2 border-white/60 border-t-transparent animate-spin" />
-                              Saving…
-                            </>
-                          ) : (
-                            <>
-                              <i className="ri-save-line" />
-                              Save Location
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </form>
-                  );
-                })}
-              </div>
-
-              <button
-                type="button"
-                onClick={closeAddPanel}
-                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
-              >
-                Close
-              </button>
-            </div>
-          </Modal>
         </div>
+      )}
+
+      {network && (
+        <ProviderEditModal
+          network={network}
+          provider={editingProvider}
+          providers={providers}
+          specialtyOptions={specialtyOptions}
+          onClose={closeAddPanel}
+          onProvidersChange={setProviders}
+          onToast={showToast}
+        />
       )}
 
       {/* ── View toggle bar ─────────────────────────────────────────────────── */}
@@ -3500,6 +2067,10 @@ export function MyNetworkClient({
                     key={networkProviderEntryId(p)}
                     provider={p}
                     removing={removingId === networkProviderEntryId(p)}
+                    canManage={
+                      canManageAll ||
+                      (!!callerOrgId && p.owningOrganizationId === callerOrgId)
+                    }
                     onEdit={() => openEditPanel(p)}
                     onRemove={() =>
                       requestRemove(networkProviderEntryId(p), p.name)
@@ -3520,6 +2091,10 @@ export function MyNetworkClient({
               key={networkProviderEntryId(p)}
               provider={p}
               removing={removingId === networkProviderEntryId(p)}
+              canManage={
+                canManageAll ||
+                (!!callerOrgId && p.owningOrganizationId === callerOrgId)
+              }
               onEdit={() => openEditPanel(p)}
               onRemove={() => requestRemove(networkProviderEntryId(p), p.name)}
             />
@@ -3570,11 +2145,13 @@ export function MyNetworkClient({
 function ProviderCard({
   provider,
   removing,
+  canManage,
   onEdit,
   onRemove,
 }: {
   provider: NetworkProviderItem;
   removing: boolean;
+  canManage: boolean;
   onEdit: () => void;
   onRemove: () => void;
 }) {
@@ -3609,25 +2186,27 @@ function ProviderCard({
             )}
           </div>
         </div>
-        <div className="flex items-center gap-1 shrink-0">
-          <button
-            onClick={onEdit}
-            title="Edit provider"
-            className="p-1.5 rounded-md text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-          >
-            <i className="ri-pencil-line text-base" />
-          </button>
-          <button
-            onClick={onRemove}
-            disabled={removing}
-            title="Remove from network"
-            className="p-1.5 rounded-md text-gray-300 hover:text-red-500 hover:bg-red-50 disabled:opacity-40 transition-colors"
-          >
-            <i
-              className={`text-base ${removing ? "ri-loader-4-line animate-spin" : "ri-close-circle-line"}`}
-            />
-          </button>
-        </div>
+        {canManage && (
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={onEdit}
+              title="Edit provider"
+              className="p-1.5 rounded-md text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+            >
+              <i className="ri-pencil-line text-base" />
+            </button>
+            <button
+              onClick={onRemove}
+              disabled={removing}
+              title="Remove from network"
+              className="p-1.5 rounded-md text-gray-300 hover:text-red-500 hover:bg-red-50 disabled:opacity-40 transition-colors"
+            >
+              <i
+                className={`text-base ${removing ? "ri-loader-4-line animate-spin" : "ri-close-circle-line"}`}
+              />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Contact + location */}
@@ -3700,11 +2279,13 @@ function ProviderCard({
 function ProviderRow({
   provider,
   removing,
+  canManage,
   onEdit,
   onRemove,
 }: {
   provider: NetworkProviderItem;
   removing: boolean;
+  canManage: boolean;
   onEdit: () => void;
   onRemove: () => void;
 }) {
@@ -3785,25 +2366,31 @@ function ProviderRow({
         <AccessStageBadge stage={provider.accessStage} />
       </td>
       <td className="px-4 py-3 text-right">
-        <div className="flex justify-end gap-1">
-          <button
-            onClick={onEdit}
-            title="Edit provider"
-            className="p-1.5 rounded-md text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-          >
-            <i className="ri-pencil-line text-base" />
-          </button>
-          <button
-            onClick={onRemove}
-            disabled={removing}
-            title="Remove from network"
-            className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-40 transition-colors"
-          >
-            <i
-              className={`text-base ${removing ? "ri-loader-4-line animate-spin" : "ri-close-circle-line"}`}
-            />
-          </button>
-        </div>
+        {canManage ? (
+          <div className="flex justify-end gap-1">
+            <button
+              onClick={onEdit}
+              title="Edit provider"
+              className="p-1.5 rounded-md text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+            >
+              <i className="ri-pencil-line text-base" />
+            </button>
+            <button
+              onClick={onRemove}
+              disabled={removing}
+              title="Remove from network"
+              className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-40 transition-colors"
+            >
+              <i
+                className={`text-base ${removing ? "ri-loader-4-line animate-spin" : "ri-close-circle-line"}`}
+              />
+            </button>
+          </div>
+        ) : (
+          <span className="text-xs text-gray-300" title="View only">
+            <i className="ri-eye-line text-base" />
+          </span>
+        )}
       </td>
     </tr>
   );

@@ -69,6 +69,11 @@ provider search, map, and provider-management capabilities. `LAW_FIRM` and `LIEN
 eligibility is seeded for `SYNQ_CARECONNECT` so law-firm-scoped CareConnect users can be provisioned
 without tenant-wide user-management access.
 
+`20260821093425_AddCareConnectReferrerAdminRole` seeds `CARECONNECT_REFERRER_ADMIN` — the same
+network/provider capabilities as `CARECONNECT_NETWORK_MANAGER`, but with `LAW_FIRM`-only organization
+eligibility (no `LIEN_OWNER` row), so a law firm's own admin can be granted network self-management
+without also becoming eligible for the lien-company-oriented role (LSV3-1084).
+
 `20260728000001_SeedSynqLienSellWorkflowPermission` maps
 `SYNQ_LIENS.lien:sell` to `SYNQLIEN_SELLER`. This is the explicit Flow
 capability for seller workflow access; it supplements the lien-sale API

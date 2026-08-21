@@ -116,6 +116,67 @@ public class AuthCareConnectCommonPortalPolicyTests
     }
 
     [Fact]
+    public async Task Login_ResolveByEmail_AllowsReferrerAdminOnly()
+    {
+        using var factory = BuildFactory();
+        var seeded = await SeedCommonPortalUserAsync(factory, ["CARECONNECT_REFERRER_ADMIN"], systemRoles: []);
+
+        using var scope = factory.Services.CreateScope();
+        var authService = scope.ServiceProvider.GetRequiredService<IAuthService>();
+
+        var response = await authService.LoginAsync(new LoginRequest(
+            Email: seeded.Email,
+            Password: seeded.Password,
+            ResolveByEmail: true));
+
+        Assert.Equal(seeded.TenantId, response.User.TenantId);
+        Assert.Contains("SYNQ_CARECONNECT:CARECONNECT_REFERRER_ADMIN", response.User.ProductRoles ?? []);
+    }
+
+    [Fact]
+    public async Task Login_ResolveByEmail_AllowsReferrerAdminAndReferrer()
+    {
+        using var factory = BuildFactory();
+        var seeded = await SeedCommonPortalUserAsync(
+            factory,
+            ["CARECONNECT_REFERRER", "CARECONNECT_REFERRER_ADMIN"],
+            systemRoles: []);
+
+        using var scope = factory.Services.CreateScope();
+        var authService = scope.ServiceProvider.GetRequiredService<IAuthService>();
+
+        var response = await authService.LoginAsync(new LoginRequest(
+            Email: seeded.Email,
+            Password: seeded.Password,
+            ResolveByEmail: true));
+
+        Assert.Equal(seeded.TenantId, response.User.TenantId);
+        Assert.Contains("SYNQ_CARECONNECT:CARECONNECT_REFERRER", response.User.ProductRoles ?? []);
+        Assert.Contains("SYNQ_CARECONNECT:CARECONNECT_REFERRER_ADMIN", response.User.ProductRoles ?? []);
+    }
+
+    [Fact]
+    public async Task Login_ResolveByEmail_DeniesNetworkManagerPlusReferrerAdmin()
+    {
+        using var factory = BuildFactory();
+        var seeded = await SeedCommonPortalUserAsync(
+            factory,
+            productRoles: ["CARECONNECT_REFERRER_ADMIN", "CARECONNECT_NETWORK_MANAGER"],
+            systemRoles: []);
+
+        using var scope = factory.Services.CreateScope();
+        var authService = scope.ServiceProvider.GetRequiredService<IAuthService>();
+
+        var ex = await Assert.ThrowsAsync<CareConnectPortalRoleRestrictedException>(() =>
+            authService.LoginAsync(new LoginRequest(
+                Email: seeded.Email,
+                Password: seeded.Password,
+                ResolveByEmail: true)));
+
+        Assert.Equal(PortalRestrictionMessage, ex.Message);
+    }
+
+    [Fact]
     public async Task Login_ResolveByEmail_DeniesNetworkManagerPlusReferrer()
     {
         using var factory = BuildFactory();

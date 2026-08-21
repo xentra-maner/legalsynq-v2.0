@@ -19,11 +19,12 @@ namespace Identity.Api.Endpoints;
 
 public static class AuthEndpoints
 {
-    private sealed record TenantPrimaryMembership(
-        Guid TenantId,
-        Guid OrganizationId,
+    private sealed record ActiveOrgMembership(
+        Guid?  OrgTenantId,
+        Guid   OrganizationId,
         string OrganizationName,
-        string OrganizationType);
+        string OrganizationType,
+        bool   IsPrimary);
 
     public static void MapAuthEndpoints(this WebApplication app)
     {
@@ -146,33 +147,43 @@ public static class AuthEndpoints
                     })
                 .ToListAsync(ct);
 
-            var tenantIds = records.Select(r => r.TenantId).Distinct().ToList();
-            var primaryMemberships = tenantIds.Count == 0
-                ? new List<TenantPrimaryMembership>()
-                : await db.UserOrganizationMemberships
-                    .AsNoTracking()
-                    .Include(m => m.Organization)
-                    .Where(m => m.UserId == userId
-                             && m.IsActive
-                             && m.IsPrimary
-                             && m.Organization.TenantId != null
-                             && tenantIds.Contains(m.Organization.TenantId.Value))
-                    .Select(m => new TenantPrimaryMembership(
-                        m.Organization.TenantId!.Value,
-                        m.Organization.Id,
-                        m.Organization.DisplayName ?? m.Organization.Name,
-                        m.Organization.OrgType))
-                    .ToListAsync(ct);
-            var primaryMembershipByTenant = primaryMemberships
-                .GroupBy(m => m.TenantId)
-                .ToDictionary(g => g.Key, g => g.First());
+            // LSV3-1084 fix: UserProductAccess.OrganizationId is never populated by any
+            // current grant path, so this membership lookup is the only source of
+            // organizationId in the response. Two wrinkles it must handle:
+            //   1. IsPrimary isn't reliably set when a user has a single org — don't
+            //      require it, only prefer it when more than one candidate applies.
+            //   2. Cross-tenant orgs (e.g. law firm / referrer orgs) have
+            //      Organization.TenantId == null by design — they aren't owned by any
+            //      single tenant. Such a membership is valid for every tenant the user
+            //      has product access to, not just a tenant matching the org's own
+            //      TenantId (which a cross-tenant org never has, so the old
+            //      tenant-equality filter silently excluded every referrer/law-firm
+            //      membership).
+            var activeMemberships = await db.UserOrganizationMemberships
+                .AsNoTracking()
+                .Include(m => m.Organization)
+                .Where(m => m.UserId == userId && m.IsActive)
+                .Select(m => new ActiveOrgMembership(
+                    m.Organization.TenantId,
+                    m.Organization.Id,
+                    m.Organization.DisplayName ?? m.Organization.Name,
+                    m.Organization.OrgType,
+                    m.IsPrimary))
+                .ToListAsync(ct);
+
+            ActiveOrgMembership? MembershipForTenant(Guid tenantId) =>
+                activeMemberships
+                    .Where(m => m.OrgTenantId == null || m.OrgTenantId == tenantId)
+                    .OrderByDescending(m => m.OrgTenantId == tenantId) // tenant-owned org beats a cross-tenant one
+                    .ThenByDescending(m => m.IsPrimary)
+                    .FirstOrDefault();
 
             var payload = records
                 .OrderBy(r => r.TenantName)
                 .ThenBy(r => r.ProductCode)
                 .Select(r =>
                 {
-                    primaryMembershipByTenant.TryGetValue(r.TenantId, out var membership);
+                    var membership = MembershipForTenant(r.TenantId);
                     return new
                     {
                         r.Id,

@@ -5,6 +5,8 @@ import { MyNetworkClient }         from '@/components/careconnect/my-network-cli
 import { PublicNetworkAccessCodePanel } from '@/components/careconnect/public-network-access-code-panel';
 import { tenantServerApi }         from '@/lib/tenant-api';
 import type { CareConnectAccessCodeMetadata } from '@/lib/tenant-api';
+import { resolveTenantFromCode }   from '@/lib/public-network-api';
+import { ProductRole }             from '@/types';
 import type { NetworkDetail, SpecialtyOption } from '@/types/careconnect';
 
 export const dynamic = 'force-dynamic';
@@ -19,6 +21,20 @@ export const dynamic = 'force-dynamic';
 export default async function MyNetworkPage() {
   const session = await requireOrg();
   const canManageAccessCode = session.isPlatformAdmin || session.isTenantAdmin;
+  // LSV3-1084: a CareConnectReferrerAdmin without the NetworkManager role may only
+  // view the network and edit/remove providers their own organization added to it.
+  const canManageAll =
+    session.isPlatformAdmin ||
+    session.isTenantAdmin ||
+    session.productRoles.includes(ProductRole.CareConnectNetworkManager);
+
+  let tenantName = session.tenantCode;
+  try {
+    const resolved = await resolveTenantFromCode(session.tenantCode);
+    if (resolved?.displayName) tenantName = resolved.displayName;
+  } catch {
+    // Keep the tenant code as a fallback display name.
+  }
 
   let network: NetworkDetail | null = null;
   let fetchError: string | null = null;
@@ -57,7 +73,14 @@ export default async function MyNetworkPage() {
       {canManageAccessCode && accessCodeStatus && (
         <PublicNetworkAccessCodePanel initialStatus={accessCodeStatus} />
       )}
-      <MyNetworkClient initialNetwork={network} fetchError={fetchError} specialtyOptions={specialtyOptions} />
+      <MyNetworkClient
+        initialNetwork={network}
+        fetchError={fetchError}
+        specialtyOptions={specialtyOptions}
+        tenantName={tenantName}
+        canManageAll={canManageAll}
+        callerOrgId={session.orgId ?? null}
+      />
     </div>
   );
 }

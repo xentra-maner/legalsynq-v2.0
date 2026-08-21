@@ -42,6 +42,8 @@ import type {
   CreateReferralAttributionAccessCodeRequest,
   PendingReferralRequest,
   ConvertPendingReferralRequest,
+  UpdatePendingReferralRequest,
+  TreatmentTypeOption,
 } from '@/types/careconnect';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -62,6 +64,11 @@ export const careConnectApi = {
   specialties: {
     list: () =>
       apiClient.get<SpecialtyOption[]>(`/careconnect/api/specialties`),
+  },
+
+  treatmentTypes: {
+    list: () =>
+      apiClient.get<TreatmentTypeOption[]>(`/careconnect/api/treatment-types`),
   },
 
   providers: {
@@ -352,6 +359,22 @@ export const careConnectApi = {
       ),
     getById: (id: string) =>
       apiClient.get<PendingReferralRequest>(`/careconnect/api/pending-referral-requests/${id}`),
+    update: (id: string, body: UpdatePendingReferralRequest) =>
+      apiClient.put<PendingReferralRequest>(`/careconnect/api/pending-referral-requests/${id}`, body),
+    decline: (id: string) =>
+      apiClient.post<PendingReferralRequest>(`/careconnect/api/pending-referral-requests/${id}/decline`, {}),
+    uploadAttachment: (id: string, file: File) => {
+      const form = new FormData();
+      form.append('file', file, file.name);
+      return apiClient.postForm<AttachmentSummary>(
+        `/careconnect/api/pending-referral-requests/${id}/attachments/upload`,
+        form,
+      );
+    },
+    getAttachmentSignedUrl: (id: string, attachmentId: string, download = false) =>
+      apiClient.get<SignedUrlResponse>(
+        `/careconnect/api/pending-referral-requests/${id}/attachments/${attachmentId}/url${download ? '?download=true' : ''}`,
+      ),
     convert: (id: string, body: ConvertPendingReferralRequest) =>
       apiClient.post<ReferralDetail>(`/careconnect/api/pending-referral-requests/${id}/convert`, body),
   },

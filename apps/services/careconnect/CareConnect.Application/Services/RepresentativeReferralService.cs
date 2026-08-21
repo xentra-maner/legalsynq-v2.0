@@ -14,13 +14,16 @@ namespace CareConnect.Application.Services;
 public class RepresentativeReferralService : IRepresentativeReferralService
 {
     private readonly IReferralRepository _referrals;
+    private readonly IPendingReferralRequestRepository _pendingReferralRequests;
     private readonly IIdentityOrganizationService _identityOrganizationService;
 
     public RepresentativeReferralService(
         IReferralRepository referrals,
+        IPendingReferralRequestRepository pendingReferralRequests,
         IIdentityOrganizationService identityOrganizationService)
     {
         _referrals = referrals;
+        _pendingReferralRequests = pendingReferralRequests;
         _identityOrganizationService = identityOrganizationService;
     }
 
@@ -82,9 +85,18 @@ public class RepresentativeReferralService : IRepresentativeReferralService
             .GroupBy(r => r.Status)
             .ToDictionary(g => g.Key, g => g.Count());
 
+        var pendingRequestReferrals = await _pendingReferralRequests.CountForAttributionAsync(
+            tenantId,
+            referralAttributionId,
+            PendingReferralRequest.Statuses.PendingReview,
+            from,
+            to,
+            ct);
+
         return new RepresentativeReferralMetricsResponse
         {
             TotalAttributedReferrals = inRangeItems.Count,
+            PendingRequestReferrals = pendingRequestReferrals,
             PendingReferrals = inRangeItems.Count(r => IsPending(r.Status)),
             AcceptedReferrals = inRangeItems.Count(r => IsAccepted(r.Status)),
             DeclinedReferrals = inRangeItems.Count(r => r.Status == Referral.ValidStatuses.Declined),

@@ -36,18 +36,99 @@ public sealed class PendingReferralRequestRepository : IPendingReferralRequestRe
         return (items, total);
     }
 
+    public async Task<(List<PendingReferralRequest> Items, int TotalCount)> SearchForAttributionAsync(
+        Guid tenantId,
+        Guid referralAttributionId,
+        string? status,
+        DateTime? createdFrom,
+        DateTime? createdTo,
+        int page,
+        int pageSize,
+        CancellationToken ct = default)
+    {
+        var q = _db.PendingReferralRequests
+            .AsNoTracking()
+            .Where(r => r.TenantId == tenantId && r.ReferralAttributionId == referralAttributionId);
+
+        if (!string.IsNullOrWhiteSpace(status))
+            q = q.Where(r => r.Status == status);
+
+        if (createdFrom.HasValue)
+            q = q.Where(r => r.CreatedAtUtc >= createdFrom.Value);
+
+        if (createdTo.HasValue)
+            q = q.Where(r => r.CreatedAtUtc <= createdTo.Value);
+
+        var total = await q.CountAsync(ct);
+        var items = await q
+            .OrderByDescending(r => r.CreatedAtUtc)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Include(r => r.ReferralAttribution)
+            .Include(r => r.ProviderPreferences)
+            .ToListAsync(ct);
+
+        return (items, total);
+    }
+
+    public async Task<int> CountForAttributionAsync(
+        Guid tenantId,
+        Guid referralAttributionId,
+        string? status,
+        DateTime? createdFrom,
+        DateTime? createdTo,
+        CancellationToken ct = default)
+    {
+        var q = _db.PendingReferralRequests
+            .AsNoTracking()
+            .Where(r => r.TenantId == tenantId && r.ReferralAttributionId == referralAttributionId);
+
+        if (!string.IsNullOrWhiteSpace(status))
+            q = q.Where(r => r.Status == status);
+
+        if (createdFrom.HasValue)
+            q = q.Where(r => r.CreatedAtUtc >= createdFrom.Value);
+
+        if (createdTo.HasValue)
+            q = q.Where(r => r.CreatedAtUtc <= createdTo.Value);
+
+        return await q.CountAsync(ct);
+    }
+
+    public async Task<PendingReferralRequest?> GetForAttributionAsync(
+        Guid tenantId,
+        Guid referralAttributionId,
+        Guid id,
+        CancellationToken ct = default)
+    {
+        return await _db.PendingReferralRequests
+            .AsNoTracking()
+            .Where(r => r.TenantId == tenantId && r.ReferralAttributionId == referralAttributionId && r.Id == id)
+            .Include(r => r.ReferralAttribution)
+            .Include(r => r.ProviderPreferences)
+            .Include(r => r.Attachments)
+            .FirstOrDefaultAsync(ct);
+    }
+
     public async Task<PendingReferralRequest?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
     {
         return await _db.PendingReferralRequests
             .Where(r => r.TenantId == tenantId && r.Id == id)
             .Include(r => r.ReferralAttribution)
             .Include(r => r.ProviderPreferences)
+            .Include(r => r.Attachments)
             .FirstOrDefaultAsync(ct);
     }
 
     public async Task AddAsync(PendingReferralRequest request, CancellationToken ct = default)
     {
         await _db.PendingReferralRequests.AddAsync(request, ct);
+        await _db.SaveChangesAsync(ct);
+    }
+
+    public async Task UpdateAsync(PendingReferralRequest request, CancellationToken ct = default)
+    {
+        _db.PendingReferralRequests.Update(request);
         await _db.SaveChangesAsync(ct);
     }
 

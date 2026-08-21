@@ -21,6 +21,7 @@ import type {
   TreatmentTypeOption,
   CreatePendingReferralRequest,
   PendingReferralRequest,
+  AttachmentSummary,
   ProviderSummary,
   ProviderMarker,
   ProviderSearchParams,
@@ -59,6 +60,30 @@ export async function fetchRepresentativeReferralById(code: string, referralId: 
 export async function fetchRepresentativeMetrics(code: string, from?: string, to?: string) {
   return apiClient.get<RepresentativeReferralMetrics>(
     `${BASE}/referral-metrics${qs({ code, from, to })}`,
+  );
+}
+
+export async function fetchRepresentativePendingRequests(
+  code: string,
+  params: { from?: string; to?: string; page?: number; pageSize?: number } = {},
+) {
+  return apiClient.get<PagedResponse<PendingReferralRequest>>(
+    `${BASE}/pending-referrals${qs({ ...params, code })}`,
+  );
+}
+
+export async function fetchRepresentativePendingRequestById(code: string, id: string) {
+  return apiClient.get<PendingReferralRequest>(
+    `${BASE}/pending-referrals/${id}${qs({ code })}`,
+  );
+}
+
+export async function uploadRepresentativePendingRequestAttachment(code: string, id: string, file: File) {
+  const form = new FormData();
+  form.append('file', file, file.name);
+  return apiClient.postForm<AttachmentSummary>(
+    `${BASE}/pending-referrals/${id}/attachments/upload${qs({ code })}`,
+    form,
   );
 }
 

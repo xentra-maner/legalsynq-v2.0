@@ -50,6 +50,7 @@ public class PendingReferralRequest : AuditableEntity
     public ReferralAttribution? ReferralAttribution { get; private set; }
     public Referral? ConvertedReferral { get; private set; }
     public List<PendingReferralProviderPreference> ProviderPreferences { get; private set; } = new();
+    public List<PendingReferralAttachment> Attachments { get; private set; } = new();
 
     private PendingReferralRequest() { }
 
@@ -134,6 +135,52 @@ public class PendingReferralRequest : AuditableEntity
         ConvertedAtUtc = DateTime.UtcNow;
         ConvertedByUserId = convertedByUserId;
         UpdatedByUserId = convertedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void UpdateReviewDetails(
+        string clientFirstName,
+        string clientLastName,
+        DateTime? clientDob,
+        string clientPhone,
+        string clientEmail,
+        string? caseNumber,
+        string? requestedService,
+        string urgency,
+        Guid? treatmentTypeId,
+        DateOnly? dateOfAccident,
+        string? notes,
+        string? lienCompanyName,
+        string? lienCompanyEmail,
+        Guid? updatedByUserId)
+    {
+        if (Status != Statuses.PendingReview)
+            throw new InvalidOperationException("Pending referral request is not pending review.");
+
+        ClientFirstName = clientFirstName.Trim();
+        ClientLastName = clientLastName.Trim();
+        ClientDob = clientDob;
+        ClientPhone = clientPhone.Trim();
+        ClientEmail = clientEmail.Trim();
+        CaseNumber = caseNumber?.Trim();
+        RequestedService = requestedService?.Trim();
+        Urgency = urgency;
+        TreatmentTypeId = treatmentTypeId;
+        DateOfAccident = dateOfAccident;
+        Notes = notes?.Trim();
+        LienCompanyName = lienCompanyName?.Trim();
+        LienCompanyEmail = lienCompanyEmail?.Trim();
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void MarkCancelled(Guid? cancelledByUserId)
+    {
+        if (Status != Statuses.PendingReview)
+            throw new InvalidOperationException("Pending referral request is not pending review.");
+
+        Status = Statuses.Cancelled;
+        UpdatedByUserId = cancelledByUserId;
         UpdatedAtUtc = DateTime.UtcNow;
     }
 }

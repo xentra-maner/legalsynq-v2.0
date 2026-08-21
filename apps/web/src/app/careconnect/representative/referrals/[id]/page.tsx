@@ -1,32 +1,65 @@
 'use client';
 
 import { useEffect, useState, use as usePromise } from 'react';
+import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { fetchRepresentativeReferralById } from '@/lib/representative-portal-api';
 import { useRepresentativePortal } from '@/components/careconnect/representative-access-code-gate';
 import { ApiError } from '@/lib/api-client';
 import type { RepresentativeFacilityRef, RepresentativeReferralDetail } from '@/types/careconnect';
 
+const STATUS_STYLES: Record<string, string> = {
+  New: 'bg-orange-50 text-orange-700 ring-orange-200',
+  NewOpened: 'bg-orange-50 text-orange-700 ring-orange-200',
+  Accepted: 'bg-blue-50 text-blue-700 ring-blue-200',
+  InProgress: 'bg-blue-50 text-blue-700 ring-blue-200',
+  Completed: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+  Declined: 'bg-red-50 text-red-700 ring-red-200',
+  Cancelled: 'bg-gray-100 text-gray-700 ring-gray-200',
+};
+
+function formatDate(value?: string | null): string {
+  if (!value) return 'Not available';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Not available';
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 function formatProviderLocation(location: RepresentativeFacilityRef): string {
   if (location.isMobile) {
     const parts = [location.serviceAreaLabel ?? location.addressLine1, `${location.city}, ${location.state}`]
       .filter(Boolean)
-      .join(' · ');
+      .join(' - ');
     return location.serviceRadiusMiles
-      ? `Mobile · ${parts} · ${location.serviceRadiusMiles}mi radius`
-      : `Mobile · ${parts}`;
+      ? `Mobile - ${parts} - ${location.serviceRadiusMiles}mi radius`
+      : `Mobile - ${parts}`;
   }
   return [location.addressLine1, `${location.city}, ${location.state}`, location.postalCode]
     .filter(Boolean)
     .join(' ');
 }
 
-function Field({ label, value }: { label: string; value: React.ReactNode }) {
+function patientName(referral: RepresentativeReferralDetail): string {
+  return [referral.client.firstName, referral.client.lastName].filter(Boolean).join(' ') || 'Unnamed patient';
+}
+
+function Field({ label, value }: { label: string; value?: ReactNode }) {
   return (
     <div>
-      <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">{label}</dt>
-      <dd className="mt-1 text-sm text-gray-900">{value ?? '—'}</dd>
+      <dt className="text-xs font-medium uppercase tracking-wide text-gray-400">{label}</dt>
+      <dd className="mt-1 text-sm text-gray-900">{value || 'Not available'}</dd>
     </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="rounded-lg border border-gray-200 bg-white">
+      <div className="border-b border-gray-100 px-5 py-4">
+        <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
+      </div>
+      <dl className="grid gap-x-6 gap-y-5 px-5 py-5 sm:grid-cols-2">{children}</dl>
+    </section>
   );
 }
 
@@ -34,24 +67,22 @@ interface PageProps {
   params: Promise<{ id: string }>;
 }
 
-/**
- * Restricted, read-only referral detail — renders only RepresentativeReferralDetail
- * fields returned by the backend's dedicated representative DTO. There is no admin
- * ReferralResponse anywhere in this component's data path, so there is no client-side
- * data to accidentally leak — the server never sends it.
- */
 export default function RepresentativeReferralDetailPage({ params }: PageProps) {
   const { id } = usePromise(params);
   const { code } = useRepresentativePortal();
   const [referral, setReferral] = useState<RepresentativeReferralDetail | null>(null);
-  const [loading, setLoading]   = useState(true);
+  const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
-  const [error, setError]       = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
     fetchRepresentativeReferralById(code, id)
-      .then(({ data }) => { setReferral(data); setNotFound(false); setError(null); })
+      .then(({ data }) => {
+        setReferral(data);
+        setNotFound(false);
+        setError(null);
+      })
       .catch(err => {
         if (err instanceof ApiError && err.status === 404) {
           setNotFound(true);
@@ -63,82 +94,110 @@ export default function RepresentativeReferralDetailPage({ params }: PageProps) 
   }, [code, id]);
 
   return (
-    <div className="space-y-4">
-      <Link href="/careconnect/referral/referrals" className="cursor-pointer text-sm text-gray-500 hover:text-gray-800 transition-colors">
-        ← Back to My Referrals
+    <div className="space-y-5">
+      <Link href="/careconnect/referral/referrals" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800">
+        <i className="ri-arrow-left-line" aria-hidden="true" /> Back to My Referrals
       </Link>
 
-      {loading && <p className="text-sm text-gray-500">Loading…</p>}
+      {loading && <p className="text-sm text-gray-500">Loading referral...</p>}
 
       {notFound && (
-        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-          <h3 className="text-base font-semibold text-gray-900 mb-1">Referral not found</h3>
-          <p className="text-sm text-gray-500">
-            This referral doesn&apos;t exist, or isn&apos;t attributed to you.
-          </p>
+        <div className="rounded-xl border border-gray-200 bg-white p-12 text-center">
+          <h3 className="mb-1 text-base font-semibold text-gray-900">Referral not found</h3>
+          <p className="text-sm text-gray-500">This referral does not exist, or is not attributed to you.</p>
         </div>
       )}
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{error}</div>
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
 
       {referral && (
-        <div className="bg-white border border-gray-200 rounded-lg">
-          <div className="px-6 py-5 border-b border-gray-100 flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">{referral.referenceNumber}</h2>
-              <p className="text-sm text-gray-500 mt-0.5">
-                {referral.referralAttribution.firstName} {referral.referralAttribution.lastName}
-              </p>
+        <>
+          <div className="rounded-lg border border-gray-200 bg-white p-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-2xl font-semibold text-gray-900">{patientName(referral)}</h1>
+                  <span className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ring-1 ${STATUS_STYLES[referral.status.code] ?? 'bg-gray-100 text-gray-700 ring-gray-200'}`}>
+                    {referral.status.displayName}
+                  </span>
+                </div>
+                <p className="mt-1 text-sm text-gray-500">
+                  {referral.referenceNumber} - submitted {formatDate(referral.submittedAtUtc)}
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-sm sm:min-w-80">
+                <div className="rounded-md bg-gray-50 px-3 py-2">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Law Firm</p>
+                  <p className="mt-1 font-medium text-gray-900">{referral.lawFirm.displayName}</p>
+                </div>
+                <div className="rounded-md bg-gray-50 px-3 py-2">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Last Updated</p>
+                  <p className="mt-1 font-medium text-gray-900">{formatDate(referral.lastUpdatedAtUtc)}</p>
+                </div>
+              </div>
             </div>
-            <span className="inline-flex items-center px-2.5 py-1 rounded text-xs font-medium bg-gray-100 text-gray-700 shrink-0">
-              {referral.status.displayName}
-            </span>
           </div>
 
-          <div className="px-6 py-5">
-            <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5">
-              <Field label="Reference number" value={referral.referenceNumber} />
-              <Field label="Submitted" value={new Date(referral.submittedAtUtc).toLocaleDateString()} />
-              <Field label="Status" value={referral.status.displayName} />
-              <Field label="Law firm" value={referral.lawFirm.displayName} />
-              <Field label="Provider" value={referral.provider.displayName} />
-              <Field
-                label="Provider location"
-                value={referral.providerLocation ? formatProviderLocation(referral.providerLocation) : null}
-              />
-              <Field label="Last updated" value={new Date(referral.lastUpdatedAtUtc).toLocaleDateString()} />
-            </dl>
-
-            <div className="mt-6 pt-5 border-t border-gray-100">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Client</h3>
-              <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5">
-                <Field label="Name" value={`${referral.client.firstName} ${referral.client.lastName}`.trim()} />
-                <Field
-                  label="Date of birth"
-                  value={referral.client.dateOfBirth ? new Date(referral.client.dateOfBirth).toLocaleDateString() : null}
-                />
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="space-y-5">
+              <Section title="Patient Information">
+                <Field label="Name" value={patientName(referral)} />
+                <Field label="Date of Birth" value={formatDate(referral.client.dateOfBirth)} />
                 <Field label="Phone" value={referral.client.phone} />
                 <Field label="Email" value={referral.client.email} />
-              </dl>
+              </Section>
+
+              <Section title="Provider Routing">
+                <Field label="Provider" value={referral.provider.displayName} />
+                <Field
+                  label="Provider Location"
+                  value={referral.providerLocation ? formatProviderLocation(referral.providerLocation) : undefined}
+                />
+                <Field label="Law Firm" value={referral.lawFirm.displayName} />
+                <Field
+                  label="Referral Attribution"
+                  value={`${referral.referralAttribution.firstName} ${referral.referralAttribution.lastName}`.trim()}
+                />
+              </Section>
             </div>
 
-            {referral.milestones.length > 0 && (
-              <div className="mt-6 pt-5 border-t border-gray-100">
-                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Status Milestones</h3>
-                <ul className="space-y-2">
-                  {referral.milestones.map((m, i) => (
-                    <li key={`${m.code}-${i}`} className="flex items-center justify-between text-sm">
-                      <span className="text-gray-700">{m.displayName}</span>
-                      <span className="text-gray-500">{new Date(m.occurredAtUtc).toLocaleDateString()}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            <aside className="space-y-5">
+              <section className="rounded-lg border border-gray-200 bg-white">
+                <div className="border-b border-gray-100 px-5 py-4">
+                  <h2 className="text-sm font-semibold text-gray-900">Referral Summary</h2>
+                </div>
+                <dl className="space-y-4 px-5 py-5">
+                  <Field label="Reference Number" value={referral.referenceNumber} />
+                  <Field label="Current Status" value={referral.status.displayName} />
+                  <Field label="Submitted" value={formatDate(referral.submittedAtUtc)} />
+                </dl>
+              </section>
+
+              <section className="rounded-lg border border-gray-200 bg-white">
+                <div className="border-b border-gray-100 px-5 py-4">
+                  <h2 className="text-sm font-semibold text-gray-900">Status Timeline</h2>
+                </div>
+                {referral.milestones.length > 0 ? (
+                  <ol className="space-y-4 px-5 py-5">
+                    {referral.milestones.map((milestone, index) => (
+                      <li key={`${milestone.code}-${index}`} className="flex gap-3">
+                        <span className="mt-1 h-2 w-2 rounded-full bg-primary" />
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{milestone.displayName}</p>
+                          <p className="text-xs text-gray-500">{formatDate(milestone.occurredAtUtc)}</p>
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <p className="px-5 py-5 text-sm text-gray-500">No timeline entries available.</p>
+                )}
+              </section>
+            </aside>
           </div>
-        </div>
+        </>
       )}
     </div>
   );

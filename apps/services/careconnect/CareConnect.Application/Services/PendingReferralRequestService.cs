@@ -18,6 +18,9 @@ public sealed class PendingReferralRequestService : IPendingReferralRequestServi
     private readonly IIdentityOrganizationService _identityOrganizations;
     private readonly IOrganizationRelationshipResolver _relationshipResolver;
     private readonly IReferralRepository _referrals;
+    private readonly IPendingReferralAttachmentRepository _pendingAttachments;
+    private readonly IReferralAttachmentRepository _referralAttachments;
+    private readonly IDocumentServiceClient _documents;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<PendingReferralRequestService> _logger;
 
@@ -29,6 +32,9 @@ public sealed class PendingReferralRequestService : IPendingReferralRequestServi
         IIdentityOrganizationService identityOrganizations,
         IOrganizationRelationshipResolver relationshipResolver,
         IReferralRepository referrals,
+        IPendingReferralAttachmentRepository pendingAttachments,
+        IReferralAttachmentRepository referralAttachments,
+        IDocumentServiceClient documents,
         IServiceScopeFactory scopeFactory,
         ILogger<PendingReferralRequestService> logger)
     {
@@ -39,6 +45,9 @@ public sealed class PendingReferralRequestService : IPendingReferralRequestServi
         _identityOrganizations = identityOrganizations;
         _relationshipResolver = relationshipResolver;
         _referrals = referrals;
+        _pendingAttachments = pendingAttachments;
+        _referralAttachments = referralAttachments;
+        _documents = documents;
         _scopeFactory = scopeFactory;
         _logger = logger;
     }
@@ -117,6 +126,49 @@ public sealed class PendingReferralRequestService : IPendingReferralRequestServi
         };
     }
 
+    public async Task<PagedResponse<PendingReferralRequestResponse>> SearchForAttributionAsync(
+        Guid tenantId,
+        Guid referralAttributionId,
+        string? status,
+        DateTime? createdFrom,
+        DateTime? createdTo,
+        int page,
+        int pageSize,
+        CancellationToken ct = default)
+    {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        var (items, total) = await _pending.SearchForAttributionAsync(
+            tenantId,
+            referralAttributionId,
+            status,
+            createdFrom,
+            createdTo,
+            page,
+            pageSize,
+            ct);
+
+        var responses = new List<PendingReferralRequestResponse>(items.Count);
+        foreach (var item in items)
+            responses.Add(await EnrichLawFirmNameAsync(ToResponse(item), ct));
+
+        return new PagedResponse<PendingReferralRequestResponse>
+        {
+            Items = responses,
+            Page = page,
+            PageSize = pageSize,
+            TotalCount = total,
+        };
+    }
+
+    public async Task<PendingReferralRequestResponse?> GetForAttributionAsync(
+        Guid tenantId, Guid referralAttributionId, Guid id, CancellationToken ct = default)
+    {
+        var item = await _pending.GetForAttributionAsync(tenantId, referralAttributionId, id, ct);
+        return item is null ? null : await EnrichLawFirmNameAsync(ToResponse(item), ct);
+    }
+
     public async Task<PendingReferralRequestResponse?> GetForLawFirmAsync(
         Guid tenantId, Guid lawFirmOrganizationId, Guid id, CancellationToken ct = default)
     {
@@ -125,6 +177,172 @@ public sealed class PendingReferralRequestService : IPendingReferralRequestServi
             return null;
 
         return await EnrichLawFirmNameAsync(ToResponse(item), ct);
+    }
+
+    public async Task<PendingReferralRequestResponse> UpdateForLawFirmAsync(
+        Guid tenantId, Guid lawFirmOrganizationId, Guid id, Guid? userId, UpdatePendingReferralRequest request, CancellationToken ct = default)
+    {
+        ValidateUpdate(request);
+
+        var item = await _pending.GetByIdAsync(tenantId, id, ct)
+            ?? throw new NotFoundException($"Pending referral request '{id}' was not found.");
+        if (item.LawFirmOrganizationId != lawFirmOrganizationId)
+            throw new NotFoundException($"Pending referral request '{id}' was not found.");
+        if (item.Status != PendingReferralRequest.Statuses.PendingReview)
+            throw new ConflictException("PENDING_REFERRAL_NOT_EDITABLE");
+
+        item.UpdateReviewDetails(
+            request.ClientFirstName,
+            request.ClientLastName,
+            request.ClientDob,
+            request.ClientPhone,
+            request.ClientEmail,
+            request.CaseNumber,
+            request.RequestedService,
+            request.Urgency,
+            request.TreatmentTypeId,
+            request.DateOfAccident,
+            request.Notes,
+            request.LienCompanyName,
+            request.LienCompanyEmail,
+            userId);
+
+        await _pending.UpdateAsync(item, ct);
+        return await EnrichLawFirmNameAsync(ToResponse(item), ct);
+    }
+
+    public async Task<PendingReferralRequestResponse> CancelForLawFirmAsync(
+        Guid tenantId, Guid lawFirmOrganizationId, Guid id, Guid? userId, CancellationToken ct = default)
+    {
+        var item = await _pending.GetByIdAsync(tenantId, id, ct)
+            ?? throw new NotFoundException($"Pending referral request '{id}' was not found.");
+        if (item.LawFirmOrganizationId != lawFirmOrganizationId)
+            throw new NotFoundException($"Pending referral request '{id}' was not found.");
+        if (item.Status != PendingReferralRequest.Statuses.PendingReview)
+            throw new ConflictException("PENDING_REFERRAL_NOT_DECLINABLE");
+
+        item.MarkCancelled(userId);
+        await _pending.UpdateAsync(item, ct);
+        return await EnrichLawFirmNameAsync(ToResponse(item), ct);
+    }
+
+    public async Task<AttachmentMetadataResponse> UploadAttachmentForAttributionAsync(
+        Guid tenantId,
+        Guid referralAttributionId,
+        Guid id,
+        Stream fileContent,
+        string fileName,
+        string contentType,
+        long fileSizeBytes,
+        CancellationToken ct = default)
+    {
+        var item = await _pending.GetForAttributionAsync(tenantId, referralAttributionId, id, ct);
+        if (item is null || item.Status != PendingReferralRequest.Statuses.PendingReview)
+            throw new NotFoundException($"Pending referral request '{id}' was not found.");
+
+        var uploadResult = await _documents.UploadAsync(
+            fileContent,
+            fileName,
+            contentType,
+            fileSizeBytes,
+            tenantId,
+            title: fileName,
+            referenceId: id.ToString(),
+            referenceType: "pending-referral-request",
+            ct: ct);
+
+        if (!uploadResult.Success || string.IsNullOrWhiteSpace(uploadResult.DocumentId))
+            throw new InvalidOperationException(
+                $"Document upload failed: {uploadResult.Error ?? "unknown error"}");
+
+        var attachment = PendingReferralAttachment.Create(
+            tenantId,
+            id,
+            fileName,
+            contentType,
+            fileSizeBytes,
+            externalDocumentId: uploadResult.DocumentId,
+            externalStorageProvider: AttachmentScope.Shared,
+            status: "Uploaded",
+            notes: null,
+            createdByUserId: null);
+
+        await _pendingAttachments.AddAsync(attachment, ct);
+        return ToAttachmentResponse(attachment);
+    }
+
+    public async Task<AttachmentMetadataResponse> UploadAttachmentForLawFirmAsync(
+        Guid tenantId,
+        Guid lawFirmOrganizationId,
+        Guid id,
+        Guid? userId,
+        Stream fileContent,
+        string fileName,
+        string contentType,
+        long fileSizeBytes,
+        CancellationToken ct = default)
+    {
+        var item = await _pending.GetByIdAsync(tenantId, id, ct);
+        if (item is null || item.LawFirmOrganizationId != lawFirmOrganizationId || item.Status != PendingReferralRequest.Statuses.PendingReview)
+            throw new NotFoundException($"Pending referral request '{id}' was not found.");
+
+        var uploadResult = await _documents.UploadAsync(
+            fileContent,
+            fileName,
+            contentType,
+            fileSizeBytes,
+            tenantId,
+            title: fileName,
+            referenceId: id.ToString(),
+            referenceType: "pending-referral-request",
+            ct: ct);
+
+        if (!uploadResult.Success || string.IsNullOrWhiteSpace(uploadResult.DocumentId))
+            throw new InvalidOperationException(
+                $"Document upload failed: {uploadResult.Error ?? "unknown error"}");
+
+        var attachment = PendingReferralAttachment.Create(
+            tenantId,
+            id,
+            fileName,
+            contentType,
+            fileSizeBytes,
+            externalDocumentId: uploadResult.DocumentId,
+            externalStorageProvider: AttachmentScope.Shared,
+            status: "Uploaded",
+            notes: null,
+            createdByUserId: userId);
+
+        await _pendingAttachments.AddAsync(attachment, ct);
+        return ToAttachmentResponse(attachment);
+    }
+
+    public async Task<SignedUrlResponse?> GetAttachmentSignedUrlForLawFirmAsync(
+        Guid tenantId,
+        Guid lawFirmOrganizationId,
+        Guid id,
+        Guid attachmentId,
+        bool isDownload,
+        CancellationToken ct = default)
+    {
+        var item = await _pending.GetByIdAsync(tenantId, id, ct);
+        if (item is null || item.LawFirmOrganizationId != lawFirmOrganizationId)
+            throw new NotFoundException($"Pending referral request '{id}' was not found.");
+
+        var attachment = item.Attachments.FirstOrDefault(a => a.Id == attachmentId)
+            ?? throw new NotFoundException($"Attachment '{attachmentId}' was not found.");
+
+        if (string.IsNullOrWhiteSpace(attachment.ExternalDocumentId))
+            throw new InvalidOperationException("Attachment has no associated document in the Documents service.");
+
+        var result = await _documents.GetSignedUrlAsync(tenantId, attachment.ExternalDocumentId, isDownload, ct);
+        if (result is null) return null;
+
+        return new SignedUrlResponse
+        {
+            Url = result.RedeemUrl,
+            ExpiresInSeconds = result.ExpiresInSeconds,
+        };
     }
 
     public async Task<ReferralResponse> ConvertAsync(
@@ -211,6 +429,7 @@ public sealed class PendingReferralRequestService : IPendingReferralRequestServi
 
         item.MarkConverted(referral.Id, userId);
         await _pending.UpdateAsync(item, referral, ct);
+        await CopyPendingAttachmentsToReferralAsync(tenantId, item.Id, referral.Id, userId, ct);
 
         var treatmentTypeName = item.TreatmentTypeId.HasValue
             ? await _referrals.GetTreatmentTypeNameAsync(item.TreatmentTypeId.Value, ct)
@@ -246,6 +465,32 @@ public sealed class PendingReferralRequestService : IPendingReferralRequestServi
         });
     }
 
+    private async Task CopyPendingAttachmentsToReferralAsync(
+        Guid tenantId,
+        Guid pendingReferralRequestId,
+        Guid referralId,
+        Guid? userId,
+        CancellationToken ct)
+    {
+        var attachments = await _pendingAttachments.GetByRequestAsync(tenantId, pendingReferralRequestId, ct);
+        foreach (var pendingAttachment in attachments)
+        {
+            var referralAttachment = ReferralAttachment.Create(
+                tenantId,
+                referralId,
+                pendingAttachment.FileName,
+                pendingAttachment.ContentType,
+                pendingAttachment.FileSizeBytes,
+                pendingAttachment.ExternalDocumentId,
+                pendingAttachment.ExternalStorageProvider ?? AttachmentScope.Shared,
+                pendingAttachment.Status,
+                pendingAttachment.Notes,
+                userId);
+
+            await _referralAttachments.AddAsync(referralAttachment, ct);
+        }
+    }
+
     private async Task<PendingReferralRequestResponse> EnrichLawFirmNameAsync(PendingReferralRequestResponse response, CancellationToken ct)
     {
         response.LawFirmName = await _identityOrganizations.GetOrganizationNameAsync(response.LawFirmOrganizationId, ct);
@@ -259,7 +504,9 @@ public sealed class PendingReferralRequestService : IPendingReferralRequestServi
         if (r.LawFirmOrganizationId == Guid.Empty) errors["lawFirmOrganizationId"] = ["LawFirmOrganizationId is required."];
         if (string.IsNullOrWhiteSpace(r.ClientFirstName)) errors["clientFirstName"] = ["ClientFirstName is required."];
         if (string.IsNullOrWhiteSpace(r.ClientLastName)) errors["clientLastName"] = ["ClientLastName is required."];
+        if (!r.ClientDob.HasValue) errors["clientDob"] = ["ClientDob is required."];
         if (string.IsNullOrWhiteSpace(r.ClientPhone)) errors["clientPhone"] = ["ClientPhone is required."];
+        if (!r.DateOfAccident.HasValue) errors["dateOfAccident"] = ["DateOfAccident is required."];
         if (!Referral.ValidUrgencies.All.Contains(r.Urgency)) errors["urgency"] = [$"Urgency must be one of: {string.Join(", ", Referral.ValidUrgencies.All)}."];
         if (!string.IsNullOrWhiteSpace(r.ClientEmail) && !Regex.IsMatch(r.ClientEmail.Trim(), @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
             errors["clientEmail"] = ["ClientEmail format is invalid."];
@@ -278,6 +525,23 @@ public sealed class PendingReferralRequestService : IPendingReferralRequestServi
             if (r.PreferredProviders[i].FacilityId == Guid.Empty)
                 errors[$"preferredProviders[{i}].facilityId"] = ["FacilityId is invalid."];
         }
+        if (errors.Count > 0)
+            throw new ValidationException("One or more validation errors occurred.", errors);
+    }
+
+    private static void ValidateUpdate(UpdatePendingReferralRequest r)
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (string.IsNullOrWhiteSpace(r.ClientFirstName)) errors["clientFirstName"] = ["ClientFirstName is required."];
+        if (string.IsNullOrWhiteSpace(r.ClientLastName)) errors["clientLastName"] = ["ClientLastName is required."];
+        if (!r.ClientDob.HasValue) errors["clientDob"] = ["ClientDob is required."];
+        if (string.IsNullOrWhiteSpace(r.ClientPhone)) errors["clientPhone"] = ["ClientPhone is required."];
+        if (!r.DateOfAccident.HasValue) errors["dateOfAccident"] = ["DateOfAccident is required."];
+        if (!Referral.ValidUrgencies.All.Contains(r.Urgency)) errors["urgency"] = [$"Urgency must be one of: {string.Join(", ", Referral.ValidUrgencies.All)}."];
+        if (!string.IsNullOrWhiteSpace(r.ClientEmail) && !Regex.IsMatch(r.ClientEmail.Trim(), @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
+            errors["clientEmail"] = ["ClientEmail format is invalid."];
+        if (!string.IsNullOrWhiteSpace(r.LienCompanyEmail) && !Regex.IsMatch(r.LienCompanyEmail.Trim(), @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
+            errors["lienCompanyEmail"] = ["LienCompanyEmail format is invalid."];
         if (errors.Count > 0)
             throw new ValidationException("One or more validation errors occurred.", errors);
     }
@@ -424,6 +688,10 @@ public sealed class PendingReferralRequestService : IPendingReferralRequestServi
                 DisplayOrder = p.DisplayOrder,
             })
             .ToList(),
+        Attachments = r.Attachments
+            .OrderByDescending(a => a.CreatedAtUtc)
+            .Select(ToAttachmentResponse)
+            .ToList(),
         Notes = r.Notes,
         LienCompanyName = r.LienCompanyName,
         LienCompanyEmail = r.LienCompanyEmail,
@@ -432,6 +700,20 @@ public sealed class PendingReferralRequestService : IPendingReferralRequestServi
         ConvertedAtUtc = r.ConvertedAtUtc,
         CreatedAtUtc = r.CreatedAtUtc,
         UpdatedAtUtc = r.UpdatedAtUtc,
+    };
+
+    private static AttachmentMetadataResponse ToAttachmentResponse(PendingReferralAttachment a) => new()
+    {
+        Id = a.Id,
+        FileName = a.FileName,
+        ContentType = a.ContentType,
+        FileSizeBytes = a.FileSizeBytes,
+        ExternalDocumentId = a.ExternalDocumentId,
+        ExternalStorageProvider = a.ExternalStorageProvider,
+        Status = a.Status,
+        Notes = a.Notes,
+        CreatedAtUtc = a.CreatedAtUtc,
+        CreatedByUserId = a.CreatedByUserId,
     };
 
     private static ReferralResponse ToReferralResponse(Referral r, string? treatmentTypeName) => new()

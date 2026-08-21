@@ -8,6 +8,7 @@ import {
   createPendingReferralRequest,
   fetchReferralPortalLawFirms,
   fetchReferralPortalTreatmentTypes,
+  uploadRepresentativePendingRequestAttachment,
 } from "@/lib/representative-portal-api";
 import { useRepresentativePortal } from "@/components/careconnect/representative-access-code-gate";
 import { ApiError } from "@/lib/api-client";
@@ -80,6 +81,7 @@ const EMPTY_FORM: SubmitForm = {
 const TODAY = new Date().toISOString().split("T")[0];
 const NONE_TREATMENT_TYPE = "__none__";
 const ALL_SPECIALTIES = "__all_specialties__";
+const ATTACHMENT_ACCEPT = ".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp,.txt,.csv,.xls,.xlsx";
 const ZIP_CODE_PATTERN = /^\d{5}(?:-\d{4})?$/;
 const ADDRESS_HINT_PATTERN = /\d|,|\b(?:apt|suite|ste|unit|street|st|road|rd|avenue|ave|boulevard|blvd|drive|dr|lane|ln|court|ct|circle|cir|place|pl|parkway|pkwy|highway|hwy|way|terrace|ter)\b/i;
 const US_STATE_CODES = new Set([
@@ -122,6 +124,12 @@ const inputCls = (hasError?: boolean) =>
 
 const selectTriggerCls = (hasError?: boolean) =>
   `h-auto py-2 text-sm ${hasError ? "border-red-300 focus:ring-red-100" : ""}`;
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 type ProviderPreference = Pick<ProviderSummary, "id" | "facilityId" | "displayLabel" | "markerSubtitle" | "phone" | "specialties">;
 type ProviderPickerMarker = ProviderMarker & {
@@ -552,6 +560,7 @@ export default function ReferralPortalSubmitPage() {
   const [form, setForm] = useState<SubmitForm>(EMPTY_FORM);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [attachments, setAttachments] = useState<File[]>([]);
   const [lawFirmModalOpen, setLawFirmModalOpen] = useState(false);
   const [lawFirmSearch, setLawFirmSearch] = useState("");
   const [pendingLawFirmId, setPendingLawFirmId] = useState("");
@@ -866,6 +875,12 @@ export default function ReferralPortalSubmitPage() {
     setPreferredProviders(prev => prev.filter(provider => providerPreferenceKey(provider) !== key));
   }
 
+  function previewAttachment(file: File) {
+    const url = URL.createObjectURL(file);
+    window.open(url, "_blank", "noopener,noreferrer");
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }
+
   const hasClientPhoneValue = form.clientPhone.trim().length > 0;
   const hasInvalidClientPhone = hasClientPhoneValue && !isValidPhone(form.clientPhone);
 
@@ -876,8 +891,8 @@ export default function ReferralPortalSubmitPage() {
     hasClientPhoneValue && !hasInvalidClientPhone &&
     (!form.clientEmail.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.clientEmail.trim())) &&
     (!form.lienCompanyEmail.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.lienCompanyEmail.trim())) &&
-    (!form.clientDob || (isValidIsoDate(form.clientDob) && hasReasonableYear(form.clientDob) && new Date(form.clientDob) <= new Date())) &&
-    (!form.dateOfAccident || (isValidIsoDate(form.dateOfAccident) && hasReasonableYear(form.dateOfAccident) && new Date(form.dateOfAccident) <= new Date()));
+    !!form.clientDob && isValidIsoDate(form.clientDob) && hasReasonableYear(form.clientDob) && new Date(form.clientDob) <= new Date() &&
+    !!form.dateOfAccident && isValidIsoDate(form.dateOfAccident) && hasReasonableYear(form.dateOfAccident) && new Date(form.dateOfAccident) <= new Date();
 
   function validate(): Record<string, string> {
     const errs: Record<string, string> = {};
@@ -890,10 +905,12 @@ export default function ReferralPortalSubmitPage() {
       errs.clientEmail = "Enter a valid email address.";
     if (form.lienCompanyEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.lienCompanyEmail.trim()))
       errs.lienCompanyEmail = "Enter a valid lien company email address.";
-    if (form.clientDob && !isValidIsoDate(form.clientDob)) errs.clientDob = "Enter a valid date of birth.";
+    if (!form.clientDob) errs.clientDob = "Date of birth is required.";
+    else if (!isValidIsoDate(form.clientDob)) errs.clientDob = "Enter a valid date of birth.";
     else if (form.clientDob && !hasReasonableYear(form.clientDob)) errs.clientDob = "Please enter a valid year (1900 or later).";
     else if (form.clientDob && new Date(form.clientDob) > new Date()) errs.clientDob = "Date of birth cannot be in the future.";
-    if (form.dateOfAccident && !isValidIsoDate(form.dateOfAccident)) errs.dateOfAccident = "Enter a valid date of accident.";
+    if (!form.dateOfAccident) errs.dateOfAccident = "Date of accident is required.";
+    else if (!isValidIsoDate(form.dateOfAccident)) errs.dateOfAccident = "Enter a valid date of accident.";
     else if (form.dateOfAccident && !hasReasonableYear(form.dateOfAccident)) errs.dateOfAccident = "Please enter a valid year (1900 or later).";
     else if (form.dateOfAccident && new Date(form.dateOfAccident) > new Date()) errs.dateOfAccident = "Date of accident cannot be in the future.";
     return errs;
@@ -910,7 +927,7 @@ export default function ReferralPortalSubmitPage() {
   async function performSubmit() {
     setSubmitting(true);
     try {
-      await createPendingReferralRequest(code, {
+      const { data: created } = await createPendingReferralRequest(code, {
         lawFirmOrganizationId: form.lawFirmOrganizationId,
         clientFirstName: form.clientFirstName.trim(),
         clientLastName: form.clientLastName.trim(),
@@ -931,7 +948,21 @@ export default function ReferralPortalSubmitPage() {
         lienCompanyName: form.lienCompanyName.trim() || undefined,
         lienCompanyEmail: form.lienCompanyEmail.trim() || undefined,
       });
+
+      for (const file of attachments) {
+        try {
+          await uploadRepresentativePendingRequestAttachment(code, created.id, file);
+        } catch (uploadError) {
+          throw new Error(
+            `Referral request submitted, but ${file.name} could not be uploaded. ${
+              uploadError instanceof ApiError ? uploadError.message : "Please try uploading again later."
+            }`
+          );
+        }
+      }
+
       setForm(EMPTY_FORM);
+      setAttachments([]);
       setPreferredProviders([]);
       setSelectedMarkerId(null);
       setFieldErrors({});
@@ -942,7 +973,7 @@ export default function ReferralPortalSubmitPage() {
     } catch (err) {
       setConfirmOpen(false);
       toast.error("Failed to submit referral request", {
-        description: err instanceof ApiError ? err.message : undefined,
+        description: err instanceof ApiError || err instanceof Error ? err.message : undefined,
       });
     } finally {
       setSubmitting(false);
@@ -950,7 +981,7 @@ export default function ReferralPortalSubmitPage() {
   }
 
   return (
-    <div className="max-w-5xl">
+    <div className="max-w-6xl">
       <h1 className="text-xl font-semibold text-gray-900">Submit Referral Request</h1>
       <p className="mt-1 text-sm text-gray-500">Requests are reviewed by the selected law firm before provider routing.</p>
 
@@ -1005,7 +1036,7 @@ export default function ReferralPortalSubmitPage() {
           <legend className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
             Patient Information
           </legend>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 First name <span className="text-red-500">*</span>
@@ -1057,10 +1088,11 @@ export default function ReferralPortalSubmitPage() {
               {fieldErrors.clientEmail && <p className="mt-1 text-xs text-red-600">{fieldErrors.clientEmail}</p>}
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Date of birth</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Date of birth <span className="text-red-500">*</span></label>
               <input
                 type="date" value={form.clientDob}
                 min="1900-01-01" max={TODAY}
+                required
                 onChange={e => update("clientDob", e.target.value)}
                 disabled={submitting}
                 className={inputCls(!!fieldErrors.clientDob)}
@@ -1068,10 +1100,11 @@ export default function ReferralPortalSubmitPage() {
               {fieldErrors.clientDob && <p className="mt-1 text-xs text-red-600">{fieldErrors.clientDob}</p>}
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Date of accident</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Date of accident <span className="text-red-500">*</span></label>
               <input
                 type="date" value={form.dateOfAccident}
                 min="1900-01-01" max={TODAY}
+                required
                 onChange={e => update("dateOfAccident", e.target.value)}
                 disabled={submitting}
                 className={inputCls(!!fieldErrors.dateOfAccident)}
@@ -1085,7 +1118,7 @@ export default function ReferralPortalSubmitPage() {
           <legend className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
             Referral Details
           </legend>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Urgency <span className="text-red-500">*</span>
@@ -1136,17 +1169,7 @@ export default function ReferralPortalSubmitPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-              <textarea
-                rows={3} value={form.notes}
-                placeholder="Background, prior treatment…"
-                onChange={e => update("notes", e.target.value)}
-                disabled={submitting}
-                className={`${inputCls()} resize-none`}
-              />
-            </div>
-            <div className="sm:col-span-2">
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Lien company name</label>
               <input
                 type="text" value={form.lienCompanyName}
@@ -1156,7 +1179,7 @@ export default function ReferralPortalSubmitPage() {
                 className={inputCls()}
               />
             </div>
-            <div className="sm:col-span-2">
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Lien company email</label>
               <input
                 type="email" value={form.lienCompanyEmail}
@@ -1166,6 +1189,16 @@ export default function ReferralPortalSubmitPage() {
                 className={inputCls(!!fieldErrors.lienCompanyEmail)}
               />
               {fieldErrors.lienCompanyEmail && <p className="mt-1 text-xs text-red-600">{fieldErrors.lienCompanyEmail}</p>}
+            </div>
+            <div className="sm:col-span-2 lg:col-span-3">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+              <textarea
+                rows={3} value={form.notes}
+                placeholder="Background, prior treatment…"
+                onChange={e => update("notes", e.target.value)}
+                disabled={submitting}
+                className={`${inputCls()} resize-none`}
+              />
             </div>
           </div>
         </fieldset>
@@ -1205,7 +1238,7 @@ export default function ReferralPortalSubmitPage() {
                 <p className="text-xs font-semibold uppercase tracking-wide text-primary">
                   Preferred providers ({preferredProviders.length})
                 </p>
-                <div className="mt-2 space-y-2">
+                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {preferredProviders.map((provider, index) => {
                     const key = providerPreferenceKey(provider);
                     return (
@@ -1229,6 +1262,80 @@ export default function ReferralPortalSubmitPage() {
                       </div>
                     );
                   })}
+                </div>
+              </div>
+            )}
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+            Attachments
+          </legend>
+          <div className="space-y-3">
+            <label className={`flex cursor-pointer items-center gap-3 rounded-lg border border-dashed px-3 py-3 transition-colors ${
+              submitting
+                ? "pointer-events-none opacity-50"
+                : "border-gray-300 hover:border-primary hover:bg-primary/5"
+            }`}>
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-50 text-gray-400">
+                <i className="ri-upload-2-line text-lg" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-gray-900">Attach documents</span>
+                <span className="block text-xs text-gray-500">PDF, Word, images, text, CSV, or Excel files.</span>
+              </span>
+              <input
+                type="file"
+                className="hidden"
+                accept={ATTACHMENT_ACCEPT}
+                multiple
+                disabled={submitting}
+                onChange={event => {
+                  const files = Array.from(event.target.files ?? []);
+                  if (files.length > 0) {
+                    setAttachments(prev => [...prev, ...files]);
+                  }
+                  event.target.value = "";
+                }}
+              />
+            </label>
+
+            {attachments.length > 0 && (
+              <div className="rounded-lg border border-gray-200 bg-gray-50">
+                <div className="border-b border-gray-200 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Selected documents ({attachments.length})
+                </div>
+                <div className="divide-y divide-gray-200">
+                  {attachments.map((file, index) => (
+                    <div key={`${file.name}-${file.size}-${index}`} className="flex items-center gap-3 px-3 py-2">
+                      <i className="ri-file-line shrink-0 text-gray-400" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-gray-900">{file.name}</p>
+                        <p className="text-xs text-gray-500">{formatFileSize(file.size)}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => previewAttachment(file)}
+                        disabled={submitting}
+                        aria-label={`View ${file.name}`}
+                        title="View attachment"
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-white hover:text-gray-700 disabled:opacity-50"
+                      >
+                        <i className="ri-eye-line text-base" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAttachments(prev => prev.filter((_, i) => i !== index))}
+                        disabled={submitting}
+                        aria-label={`Remove ${file.name}`}
+                        title="Remove attachment"
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-white hover:text-gray-700 disabled:opacity-50"
+                      >
+                        <i className="ri-close-line text-base" />
+                      </button>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

@@ -57,6 +57,7 @@ public sealed class PendingReferralRequestResponse
     public string? RecommendedProviderName { get; set; }
     public string? RecommendedFacilityName { get; set; }
     public List<PendingReferralProviderPreferenceResponse> PreferredProviders { get; set; } = new();
+    public List<AttachmentMetadataResponse> Attachments { get; set; } = new();
     public string? Notes { get; set; }
     public string? LienCompanyName { get; set; }
     public string? LienCompanyEmail { get; set; }
@@ -82,4 +83,21 @@ public sealed class ConvertPendingReferralRequest
     public Guid? ProviderId { get; set; }
     public Guid? NetworkProviderId { get; set; }
     public Guid? FacilityId { get; set; }
+}
+
+public sealed class UpdatePendingReferralRequest
+{
+    public string ClientFirstName { get; set; } = string.Empty;
+    public string ClientLastName { get; set; } = string.Empty;
+    public DateTime? ClientDob { get; set; }
+    public string ClientPhone { get; set; } = string.Empty;
+    public string ClientEmail { get; set; } = string.Empty;
+    public string? CaseNumber { get; set; }
+    public string? RequestedService { get; set; }
+    public string Urgency { get; set; } = string.Empty;
+    public Guid? TreatmentTypeId { get; set; }
+    public DateOnly? DateOfAccident { get; set; }
+    public string? Notes { get; set; }
+    public string? LienCompanyName { get; set; }
+    public string? LienCompanyEmail { get; set; }
 }

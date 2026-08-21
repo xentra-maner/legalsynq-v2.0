@@ -57,8 +57,13 @@ CareConnect.Tests/         Tests
 | `GET` | `/api/public/referral-portal/law-firms` | Anonymous (`?code=`) | Referral Portal — law firm selector options |
 | `GET` | `/api/public/referral-portal/providers` | Anonymous (`?code=`) | Referral Portal — verified master provider list for recommendations |
 | `GET` | `/api/public/referral-portal/providers/map` | Anonymous (`?code=`) | Referral Portal — verified provider map markers for recommendations |
+| `GET` | `/api/public/referral-portal/pending-referrals` | Anonymous (`?code=`) | Referral Portal — paginated pending request list for that attribution |
+| `GET` | `/api/public/referral-portal/pending-referrals/{id}` | Anonymous (`?code=`) | Referral Portal — read one pending request attributed to the access code |
 | `POST` | `/api/public/referral-portal/pending-referrals` | Anonymous (`?code=`) | Referral Portal — submit a pending referral request to a law firm |
-| `GET`/`POST` | `/api/pending-referral-requests` | CARECONNECT_REFERRER | Law firm review queue and conversion endpoint |
+| `POST` | `/api/public/referral-portal/pending-referrals/{id}/attachments/upload` | Anonymous (`?code=`) | Referral Portal — upload a document attachment for a pending request |
+| `GET`/`PUT`/`POST` | `/api/pending-referral-requests` | CARECONNECT_REFERRER | Law firm review queue; update request values, decline requests, and convert accepted requests |
+| `POST` | `/api/pending-referral-requests/{id}/attachments/upload` | CARECONNECT_REFERRER | Law firm review queue — upload document attachments to a pending request before conversion |
+| `GET` | `/api/pending-referral-requests/{id}/attachments/{attachmentId}/url` | CARECONNECT_REFERRER | Law firm review queue — get a short-lived pending request attachment URL |
 | `POST` | `/api/careconnect/appointments` | Bearer | Book appointment |
 | `GET` | `/api/public/careconnect/network` | Anonymous | Public provider network |
 | `PUT` | `/api/networks/{networkId}/providers/{providerId}` | Bearer | Edit a provider from a tenant network after membership validation |

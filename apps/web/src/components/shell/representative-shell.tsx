@@ -13,6 +13,7 @@ interface RepresentativeShellProps {
 const NAV_ITEMS = [
   { href: "/careconnect/referral/dashboard", label: "Dashboard", icon: "ri-dashboard-line" },
   { href: "/careconnect/referral/submit", label: "Submit Request", icon: "ri-send-plane-line" },
+  { href: "/careconnect/referral/requests", label: "Pending Requests", icon: "ri-inbox-archive-line" },
   { href: "/careconnect/referral/referrals", label: "My Referrals", icon: "ri-file-list-3-line" },
 ];
 

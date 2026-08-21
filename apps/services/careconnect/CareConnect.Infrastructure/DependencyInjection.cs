@@ -115,6 +115,7 @@ public static class DependencyInjection
         services.AddScoped<IReferralAttributionRepository, ReferralAttributionRepository>();
         services.AddScoped<IReferralAttributionAccessCodeRepository, ReferralAttributionAccessCodeRepository>();
         services.AddScoped<IPendingReferralRequestRepository, PendingReferralRequestRepository>();
+        services.AddScoped<IPendingReferralAttachmentRepository, PendingReferralAttachmentRepository>();
 
         services.AddScoped<IProviderService, ProviderService>();
         services.AddScoped<IReferralService, ReferralService>();

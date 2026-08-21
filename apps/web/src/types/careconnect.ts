@@ -338,6 +338,8 @@ export interface RepresentativeReferralDetail {
 
 export interface RepresentativeReferralMetrics {
   totalAttributedReferrals: number;
+  pendingRequestReferrals:  number;
+  pendingReviewReferrals?:  number;
   pendingReferrals:         number;
   acceptedReferrals:        number;
   declinedReferrals:        number;
@@ -421,6 +423,7 @@ export interface PendingReferralRequest {
   recommendedProviderName?: string | null;
   recommendedFacilityName?: string | null;
   preferredProviders: PendingReferralProviderPreference[];
+  attachments?: AttachmentSummary[];
   notes?: string | null;
   lienCompanyName?: string | null;
   lienCompanyEmail?: string | null;
@@ -435,6 +438,22 @@ export interface ConvertPendingReferralRequest {
   providerId?: string;
   networkProviderId?: string;
   facilityId?: string | null;
+}
+
+export interface UpdatePendingReferralRequest {
+  clientFirstName: string;
+  clientLastName: string;
+  clientDob?: string;
+  clientPhone: string;
+  clientEmail?: string;
+  caseNumber?: string;
+  requestedService?: string;
+  urgency: string;
+  treatmentTypeId?: string;
+  dateOfAccident?: string;
+  notes?: string;
+  lienCompanyName?: string;
+  lienCompanyEmail?: string;
 }
 
 export interface PendingReferralProviderPreference {

@@ -1,6 +1,8 @@
+using BuildingBlocks.Exceptions;
 using CareConnect.Api.Helpers;
 using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
+using CareConnect.Domain;
 
 namespace CareConnect.Api.Endpoints;
 
@@ -205,6 +207,128 @@ public static class PublicRepresentativeEndpoints
             var markers = await providerService.GetMarkersAsync(tenantId.Value, query, ct);
             return Results.Ok(markers);
         }).AllowAnonymous().RequireRateLimiting("public-read-limit");
+
+        // ── GET /api/public/referral-portal/pending-referrals ────────────────
+        group.MapGet("/pending-referrals", async (
+            string? code,
+            DateTime? from,
+            DateTime? to,
+            int? page,
+            int? pageSize,
+            HttpContext http,
+            IConfiguration config,
+            IReferralAttributionAccessCodeService codeService,
+            IPendingReferralRequestService pendingService,
+            CancellationToken ct) =>
+        {
+            var tenantId = PublicTrustBoundary.ValidateAndResolveTenantId(http, config, SourceService);
+            if (tenantId is null)
+                return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
+                    detail: "Request origin could not be verified.");
+
+            var attributionId = await VerifyAndResolveAttributionAsync(codeService, tenantId.Value, code, ct);
+            if (attributionId is null)
+                return Results.Json(new { error = "This code is invalid, has expired, or no longer grants access." }, statusCode: StatusCodes.Status401Unauthorized);
+
+            var result = await pendingService.SearchForAttributionAsync(
+                tenantId.Value,
+                attributionId.Value,
+                PendingReferralRequest.Statuses.PendingReview,
+                from,
+                to,
+                Math.Max(1, page ?? 1),
+                Math.Clamp(pageSize ?? 5, 1, 50),
+                ct);
+            return Results.Ok(result);
+        }).AllowAnonymous().RequireRateLimiting("public-read-limit");
+
+        // ── GET /api/public/referral-portal/pending-referrals/{id} ──────────
+        group.MapGet("/pending-referrals/{id:guid}", async (
+            Guid id,
+            string? code,
+            HttpContext http,
+            IConfiguration config,
+            IReferralAttributionAccessCodeService codeService,
+            IPendingReferralRequestService pendingService,
+            CancellationToken ct) =>
+        {
+            var tenantId = PublicTrustBoundary.ValidateAndResolveTenantId(http, config, SourceService);
+            if (tenantId is null)
+                return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
+                    detail: "Request origin could not be verified.");
+
+            var attributionId = await VerifyAndResolveAttributionAsync(codeService, tenantId.Value, code, ct);
+            if (attributionId is null)
+                return Results.Json(new { error = "This code is invalid, has expired, or no longer grants access." }, statusCode: StatusCodes.Status401Unauthorized);
+
+            var detail = await pendingService.GetForAttributionAsync(tenantId.Value, attributionId.Value, id, ct);
+            return detail is null ? Results.NotFound() : Results.Ok(detail);
+        }).AllowAnonymous().RequireRateLimiting("public-read-limit");
+
+        // ── POST /api/public/referral-portal/pending-referrals/{id}/attachments/upload
+        group.MapPost("/pending-referrals/{id:guid}/attachments/upload", async (
+            Guid id,
+            string? code,
+            HttpRequest request,
+            HttpContext http,
+            IConfiguration config,
+            IReferralAttributionAccessCodeService codeService,
+            IPendingReferralRequestService pendingService,
+            Microsoft.Extensions.Options.IOptions<CareConnect.Api.Options.AttachmentUploadOptions> uploadOptions,
+            ILoggerFactory loggerFactory,
+            CancellationToken ct) =>
+        {
+            var logger = loggerFactory.CreateLogger("CareConnect.PublicRepresentative");
+            var tenantId = PublicTrustBoundary.ValidateAndResolveTenantId(http, config, SourceService);
+            if (tenantId is null)
+                return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
+                    detail: "Request origin could not be verified.");
+
+            var attributionId = await VerifyAndResolveAttributionAsync(codeService, tenantId.Value, code, ct);
+            if (attributionId is null)
+                return Results.Json(new { error = "This code is invalid, has expired, or no longer grants access." }, statusCode: StatusCodes.Status401Unauthorized);
+
+            if (!request.HasFormContentType)
+                return Results.BadRequest(new { error = "Request must be multipart/form-data." });
+
+            var form = await request.ReadFormAsync(ct);
+            if (form.Files.Count == 0)
+                return Results.BadRequest(new { error = "No file was provided." });
+
+            var file = form.Files[0];
+            var options = uploadOptions.Value;
+            if (file.Length > options.MaxFileSizeBytes)
+                return Results.BadRequest(new { error = $"File size exceeds the maximum allowed size of {options.MaxFileSizeBytes / (1024 * 1024)} MB." });
+
+            var normalizedType = file.ContentType?.Split(';')[0].Trim().ToLowerInvariant() ?? string.Empty;
+            if (!options.AllowedContentTypes.Contains(normalizedType, StringComparer.OrdinalIgnoreCase))
+                return Results.BadRequest(new { error = $"File type '{file.ContentType}' is not permitted.", allowed = options.AllowedContentTypes });
+
+            try
+            {
+                await using var stream = file.OpenReadStream();
+                var result = await pendingService.UploadAttachmentForAttributionAsync(
+                    tenantId.Value,
+                    attributionId.Value,
+                    id,
+                    stream,
+                    file.FileName,
+                    file.ContentType ?? "application/octet-stream",
+                    file.Length,
+                    ct);
+
+                return Results.Created($"/api/public/referral-portal/pending-referrals/{id}/attachments/{result.Id}", result);
+            }
+            catch (NotFoundException ex)
+            {
+                return Results.NotFound(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Referral portal pending request document upload failed for request {PendingRequestId}.", id);
+                return Results.Problem("An unexpected error occurred while uploading the document.");
+            }
+        }).AllowAnonymous().RequireRateLimiting("public-referral-limit").DisableAntiforgery();
 
         // ── POST /api/public/referral-portal/pending-referrals ───────────────
         group.MapPost("/pending-referrals", async (

@@ -75,4 +75,14 @@ public static class ProviderVisibility
         Private,
         Public,
     };
+
+    // 4-AC3 / single-tenant-network cutover: a Private provider is only visible to the
+    // law firm that owns it (and to a caller who can manage the whole network). Legacy
+    // rows with no OwningOrganizationId predate per-provider ownership and are treated
+    // as tenant-owned/visible-to-all, same as an explicitly Public provider.
+    public static bool IsVisibleTo(NetworkProvider np, Guid? viewerOrgId, bool viewerSeesAll) =>
+        viewerSeesAll
+        || np.Visibility == Public
+        || !np.OwningOrganizationId.HasValue
+        || np.OwningOrganizationId == viewerOrgId;
 }

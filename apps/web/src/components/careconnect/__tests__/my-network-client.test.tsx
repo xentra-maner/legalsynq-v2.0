@@ -81,6 +81,7 @@ const BASE_PROVIDER: NetworkProviderItem = {
   isActive: true,
   acceptingReferrals: true,
   facilityIsActive: true,
+  visibility: 'Private',
   accessStage: 'PUBLIC',
   specialties: [],
   primarySpecialtyId: null,
@@ -159,6 +160,8 @@ describe('MyNetworkClient', () => {
         specialtyOptions={MULTI_SPECIALTIES}
       tenantName="Test Tenant"
       canManageAll
+      canManageVisibility
+      canAddProviders
       />,
     );
 
@@ -190,6 +193,8 @@ describe('MyNetworkClient', () => {
         specialtyOptions={SPECIALTIES}
       tenantName="Test Tenant"
       canManageAll
+      canManageVisibility
+      canAddProviders
       />,
     );
 
@@ -260,6 +265,8 @@ describe('MyNetworkClient', () => {
         specialtyOptions={SPECIALTIES}
       tenantName="Test Tenant"
       canManageAll
+      canManageVisibility
+      canAddProviders
       />,
     );
 
@@ -337,6 +344,8 @@ describe('MyNetworkClient', () => {
         specialtyOptions={SPECIALTIES}
       tenantName="Test Tenant"
       canManageAll
+      canManageVisibility
+      canAddProviders
       />,
     );
 
@@ -366,6 +375,8 @@ describe('MyNetworkClient', () => {
         specialtyOptions={SPECIALTIES}
       tenantName="Test Tenant"
       canManageAll
+      canManageVisibility
+      canAddProviders
       />,
     );
 
@@ -445,6 +456,8 @@ describe('MyNetworkClient', () => {
         specialtyOptions={SPECIALTIES}
       tenantName="Test Tenant"
       canManageAll
+      canManageVisibility
+      canAddProviders
       />,
     );
 
@@ -507,6 +520,8 @@ describe('MyNetworkClient', () => {
         specialtyOptions={SPECIALTIES}
       tenantName="Test Tenant"
       canManageAll
+      canManageVisibility
+      canAddProviders
       />,
     );
 
@@ -540,6 +555,8 @@ describe('MyNetworkClient', () => {
         specialtyOptions={SPECIALTIES}
       tenantName="Test Tenant"
       canManageAll
+      canManageVisibility
+      canAddProviders
       />,
     );
 
@@ -592,6 +609,8 @@ describe('MyNetworkClient', () => {
         specialtyOptions={SPECIALTIES}
       tenantName="Test Tenant"
       canManageAll
+      canManageVisibility
+      canAddProviders
       />,
     );
 
@@ -649,6 +668,8 @@ describe('MyNetworkClient', () => {
         specialtyOptions={SPECIALTIES}
       tenantName="Test Tenant"
       canManageAll
+      canManageVisibility
+      canAddProviders
       />,
     );
 
@@ -694,6 +715,8 @@ describe('MyNetworkClient', () => {
         specialtyOptions={SPECIALTIES}
         tenantName="Acme Law"
         canManageAll
+        canManageVisibility
+        canAddProviders
       />,
     );
 
@@ -711,13 +734,15 @@ describe('MyNetworkClient', () => {
         specialtyOptions={SPECIALTIES}
         tenantName="Acme Law"
         canManageAll={false}
+        canManageVisibility={false}
+        canAddProviders
         callerOrgId="my-org"
       />,
     );
 
     expect(screen.queryByTitle('Edit provider')).not.toBeInTheDocument();
     expect(screen.queryByTitle('Remove from network')).not.toBeInTheDocument();
-    expect(screen.getByTitle('View only')).toBeInTheDocument();
+    expect(screen.queryByTitle('View only')).not.toBeInTheDocument();
   });
 
   test('LSV3-1084: shows edit/remove actions for a provider the caller owns even when canManageAll is false', () => {
@@ -730,6 +755,8 @@ describe('MyNetworkClient', () => {
         specialtyOptions={SPECIALTIES}
         tenantName="Acme Law"
         canManageAll={false}
+        canManageVisibility={false}
+        canAddProviders
         callerOrgId="my-org"
       />,
     );

@@ -7,6 +7,10 @@ public interface INetworkRepository
 {
     Task<List<ProviderNetwork>> GetAllByTenantAsync(Guid tenantId, CancellationToken ct = default);
 
+    // Single-tenant-network cutover: resolves the tenant's one canonical network (oldest
+    // non-deleted row, deterministic even if legacy data has more than one).
+    Task<ProviderNetwork?> GetSingleForTenantAsync(Guid tenantId, CancellationToken ct = default);
+
     // BLK-PERF-01: Single-query alternative to GetAllByTenantAsync + N×GetWithProvidersAsync.
     // Returns each network with its provider count without loading full provider entities.
     // organizationId, when provided, scopes the result to tenant-owned networks

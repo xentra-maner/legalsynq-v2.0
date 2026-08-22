@@ -2,9 +2,6 @@ import { requireOrg }              from '@/lib/auth-guards';
 import { careConnectServerApi }    from '@/lib/careconnect-server-api';
 import { ServerApiError }          from '@/lib/server-api-client';
 import { MyNetworkClient }         from '@/components/careconnect/my-network-client';
-import { PublicNetworkAccessCodePanel } from '@/components/careconnect/public-network-access-code-panel';
-import { tenantServerApi }         from '@/lib/tenant-api';
-import type { CareConnectAccessCodeMetadata } from '@/lib/tenant-api';
 import { resolveTenantFromCode }   from '@/lib/public-network-api';
 import { ProductRole }             from '@/types';
 import type { NetworkDetail, SpecialtyOption } from '@/types/careconnect';
@@ -12,25 +9,31 @@ import type { NetworkDetail, SpecialtyOption } from '@/types/careconnect';
 export const dynamic = 'force-dynamic';
 
 /**
- * /careconnect/my-network — Preferred Provider Network management.
+ * /careconnect/network-setup — Law Firm provider network self-management.
  *
- * Authenticated view. Allows the tenant to create, populate, and manage
- * their preferred provider network. The public-facing read-only view lives
- * at /careconnect/network (no auth required).
+ * Single-tenant-network cutover: law firms (CareConnectReferrerAdmin) add and
+ * manage their own providers directly in the tenant's one shared provider
+ * network, instead of creating/owning a separate network of their own. This
+ * is a distinct screen from the tenant portal's "My Network"
+ * (careconnect/my-network — NetworkManager/admin audience) so that page's
+ * behavior stays unchanged for its existing users. Reuses MyNetworkClient
+ * (same list/cards/map views, Add Provider modal, edit modal, visibility
+ * badges) mounted under a law-firm-facing label and route.
  */
-export default async function MyNetworkPage() {
+export default async function NetworkSetupPage() {
   const session = await requireOrg();
-  const canManageAccessCode = session.isPlatformAdmin || session.isTenantAdmin;
   // 4-AC3: only a Tenant/Platform Admin may toggle a provider's Public/Private
-  // visibility — NetworkManager is intentionally excluded, unlike canManageAll below.
+  // visibility — a law firm's ReferrerAdmin cannot.
   const canManageVisibility = session.isPlatformAdmin || session.isTenantAdmin;
-  // Tenant portal's own network-management screen — NetworkManager/admin only.
-  // Law firms use the separate "Network Setup" screen instead (network-setup/page.tsx).
   const canManageAll =
     session.isPlatformAdmin ||
     session.isTenantAdmin ||
     session.productRoles.includes(ProductRole.CareConnectNetworkManager);
-  const canAddProviders = canManageAll;
+  // A plain CareConnectReferrerAdmin (law firm) may add providers to the shared
+  // network — they default to Private (ResolveVisibility) and the caller can
+  // only edit/remove providers their own organization added.
+  const canAddProviders =
+    canManageAll || session.productRoles.includes(ProductRole.CareConnectReferrerAdmin);
 
   let tenantName = session.tenantCode;
   try {
@@ -42,7 +45,6 @@ export default async function MyNetworkPage() {
 
   let network: NetworkDetail | null = null;
   let fetchError: string | null = null;
-  let accessCodeStatus: CareConnectAccessCodeMetadata | null = null;
   let specialtyOptions: SpecialtyOption[] = [];
 
   try {
@@ -64,19 +66,8 @@ export default async function MyNetworkPage() {
     specialtyOptions = [];
   }
 
-  if (canManageAccessCode) {
-    try {
-      accessCodeStatus = await tenantServerApi.getCareConnectAccessCode(session.tenantId);
-    } catch {
-      // Non-fatal — keep the page usable even if the access-code panel cannot load.
-    }
-  }
-
   return (
     <div className="space-y-5">
-      {canManageAccessCode && accessCodeStatus && (
-        <PublicNetworkAccessCodePanel initialStatus={accessCodeStatus} />
-      )}
       <MyNetworkClient
         initialNetwork={network}
         fetchError={fetchError}
@@ -86,7 +77,7 @@ export default async function MyNetworkPage() {
         canManageVisibility={canManageVisibility}
         canAddProviders={canAddProviders}
         callerOrgId={session.orgId ?? null}
-        showNetworkUrl
+        showNetworkUrl={false}
       />
     </div>
   );

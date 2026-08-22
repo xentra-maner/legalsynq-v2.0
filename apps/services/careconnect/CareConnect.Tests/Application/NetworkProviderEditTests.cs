@@ -437,6 +437,140 @@ public class NetworkProviderEditTests
         networks.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    // 4-AC3: Tenant Admin controls whether a Law Firm's provider is Public (shared
+    // network) or Private (Law Firm network only) — a CareConnectReferrerAdmin, even
+    // one who owns the provider, must not be able to change Visibility.
+    [Fact]
+    public async Task UpdateProviderAsync_WhenTenantAdmin_CanChangeVisibility()
+    {
+        var (sut, networks, tenantId, networkId, providerId, membership, specialtyId) = BuildVisibilityFixture();
+
+        var request = ValidUpdateRequest([specialtyId]) with { Visibility = ProviderVisibility.Public };
+        var result = await sut.UpdateProviderAsync(tenantId, networkId, providerId, request, null,
+            isTenantAdmin: true, callerOrgId: null, isNetworkManager: false);
+
+        Assert.Equal(ProviderVisibility.Public, membership.Visibility);
+        Assert.Equal(ProviderVisibility.Public, result.Visibility);
+    }
+
+    [Fact]
+    public async Task UpdateProviderAsync_WhenReferrerAdminOwnsProvider_CannotChangeVisibility()
+    {
+        var ownerOrgId = Guid.CreateVersion7();
+        var (sut, networks, tenantId, networkId, providerId, membership, specialtyId) =
+            BuildVisibilityFixture(owningOrganizationId: ownerOrgId);
+
+        var request = ValidUpdateRequest([specialtyId]) with { Visibility = ProviderVisibility.Public };
+
+        await Assert.ThrowsAsync<ForbiddenException>(() =>
+            sut.UpdateProviderAsync(tenantId, networkId, providerId, request, null,
+                isTenantAdmin: false, callerOrgId: ownerOrgId, isNetworkManager: false));
+
+        Assert.Equal(ProviderVisibility.Private, membership.Visibility);
+        networks.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateProviderAsync_WhenNetworkManagerButNotTenantAdmin_CannotChangeVisibility()
+    {
+        // NetworkManager bypasses the ownership check (LSV3-1084) but must still be
+        // rejected here — only a system/tenant admin may change Visibility.
+        var ownerOrgId = Guid.CreateVersion7();
+        var callerOrgId = Guid.CreateVersion7();
+        var (sut, networks, tenantId, networkId, providerId, membership, specialtyId) =
+            BuildVisibilityFixture(owningOrganizationId: ownerOrgId);
+
+        var request = ValidUpdateRequest([specialtyId]) with { Visibility = ProviderVisibility.Public };
+
+        await Assert.ThrowsAsync<ForbiddenException>(() =>
+            sut.UpdateProviderAsync(tenantId, networkId, providerId, request, null,
+                isTenantAdmin: false, callerOrgId: callerOrgId, isNetworkManager: true));
+
+        Assert.Equal(ProviderVisibility.Private, membership.Visibility);
+        networks.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateProviderAsync_WhenVisibilityOmitted_LeavesExistingVisibilityUnchanged()
+    {
+        var ownerOrgId = Guid.CreateVersion7();
+        var (sut, networks, tenantId, networkId, providerId, membership, specialtyId) =
+            BuildVisibilityFixture(owningOrganizationId: ownerOrgId);
+
+        // Referrer admin editing their own provider's other fields (name, phone, etc.)
+        // without touching Visibility must not be blocked or alter the stored value.
+        var request = ValidUpdateRequest([specialtyId]);
+        var result = await sut.UpdateProviderAsync(tenantId, networkId, providerId, request, null,
+            isTenantAdmin: false, callerOrgId: ownerOrgId, isNetworkManager: false);
+
+        Assert.Equal(ProviderVisibility.Private, membership.Visibility);
+        Assert.Equal(ProviderVisibility.Private, result.Visibility);
+    }
+
+    [Fact]
+    public async Task UpdateProviderAsync_WhenVisibilityIsInvalid_ThrowsArgumentOutOfRange()
+    {
+        var (sut, networks, tenantId, networkId, providerId, _, specialtyId) = BuildVisibilityFixture();
+
+        var request = ValidUpdateRequest([specialtyId]) with { Visibility = "Shared" };
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            sut.UpdateProviderAsync(tenantId, networkId, providerId, request, null,
+                isTenantAdmin: true, callerOrgId: null, isNetworkManager: false));
+    }
+
+    private static (
+        NetworkService Sut,
+        Mock<INetworkRepository> Networks,
+        Guid TenantId,
+        Guid NetworkId,
+        Guid ProviderId,
+        NetworkProvider Membership,
+        Guid SpecialtyId) BuildVisibilityFixture(Guid? owningOrganizationId = null)
+    {
+        var tenantId = Guid.CreateVersion7();
+        var networkId = Guid.CreateVersion7();
+        var specialtyId = Guid.CreateVersion7();
+        var specialty = Specialty.Create("Pain Doctors", "PAIN_DOCTORS", null);
+        var provider = Provider.Create(
+            tenantId, "Jane Provider", "Jane Practice", "jane@example.com", "555-0100",
+            "123 Main St", "Austin", "TX", "78701", true, true, null);
+        var providerId = provider.Id;
+        var facility = Facility.Create(
+            tenantId, "Jane Practice", "123 Main St", "Austin", "TX", "78701", "555-0100",
+            true, null, "jane@example.com");
+        var membership = NetworkProvider.Create(
+            tenantId, networkId, providerId, facility.Id, true, true,
+            owningOrganizationId, ProviderVisibility.Private);
+        SetNavigation(membership, nameof(NetworkProvider.Provider), provider);
+        SetNavigation(membership, nameof(NetworkProvider.Facility), facility);
+
+        var networks = new Mock<INetworkRepository>();
+        networks.Setup(r => r.GetByIdAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ProviderNetwork.Create(tenantId, "Network", string.Empty));
+        networks.Setup(r => r.GetMembershipByIdOrProviderAsync(networkId, providerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(membership);
+        networks.Setup(r => r.GetMembershipByIdOrProviderAsync(networkId, membership.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(membership);
+        networks.Setup(r => r.UpdateProviderInRegistryAsync(provider, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        networks.Setup(r => r.GetFacilityByIdAsync(tenantId, facility.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(facility);
+        networks.Setup(r => r.UpdateFacilityAsync(facility, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        networks.Setup(r => r.SyncProviderSpecialtiesAsync(provider.Id, It.IsAny<List<Guid>>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        networks.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var specialties = new Mock<ISpecialtyRepository>();
+        specialties.Setup(r => r.GetActiveByIdsAsync(It.Is<List<Guid>>(ids => ids.SequenceEqual(new[] { specialtyId })), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([specialty]);
+
+        var sut = BuildSut(networks.Object, specialties.Object);
+        return (sut, networks, tenantId, networkId, providerId, membership, specialtyId);
+    }
+
     private static NetworkService BuildSut(INetworkRepository networks, ISpecialtyRepository specialties) =>
         new(
             networks,

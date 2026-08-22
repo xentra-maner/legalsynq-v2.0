@@ -7,8 +7,6 @@ import dynamic from "next/dynamic";
 import { careConnectApi } from "@/lib/careconnect-api";
 import { ApiError } from "@/lib/api-client";
 import { formatPhoneDisplay } from "@/lib/phone";
-import { networkDisplayName } from "@/lib/network-display-name";
-import { useTenantBranding } from "@/providers/tenant-branding-provider";
 import { UrgencyBadge } from "@/components/careconnect/status-badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { NumberedMarker } from "@/components/careconnect/public-network-map";
@@ -121,8 +119,12 @@ async function fetchNetworkList(organizationId?: string): Promise<PublicNetworkS
   return await networksRes.json() as PublicNetworkSummary[];
 }
 
-async function fetchNetworkProviders(networkId: string): Promise<ProviderSummary[]> {
-  const detailRes = await fetch(`/api/public/careconnect/api/public/network/${networkId}/detail`);
+// organizationId (the request's law firm) activates server-side Visibility filtering:
+// a Private provider only appears when it belongs to this organization; Public
+// providers always appear regardless of which law firm the request belongs to.
+async function fetchNetworkProviders(networkId: string, organizationId?: string): Promise<ProviderSummary[]> {
+  const qs = organizationId ? `?organizationId=${encodeURIComponent(organizationId)}` : "";
+  const detailRes = await fetch(`/api/public/careconnect/api/public/network/${networkId}/detail${qs}`);
   if (!detailRes.ok) throw new Error("Failed to load provider network detail.");
   const detail = await detailRes.json() as PublicNetworkDetail;
 
@@ -432,9 +434,7 @@ export default function PendingReferralRequestDetailPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const requestId = params.id;
-  const { displayName: tenantDisplayName = "" } = useTenantBranding();
   const [request, setRequest] = useState<PendingReferralRequest | null>(null);
-  const [networkOptions, setNetworkOptions] = useState<PublicNetworkSummary[]>([]);
   const [selectedNetworkId, setSelectedNetworkId] = useState<string | null>(null);
   const [providers, setProviders] = useState<ProviderSummary[]>([]);
   const [providersLoading, setProvidersLoading] = useState(false);
@@ -482,24 +482,18 @@ export default function PendingReferralRequestDetailPage() {
 
   useEffect(() => { void load(); }, [requestId]);
 
-  // Reloads the network list whenever the request's law firm is known. When the law
-  // firm has its own network, the tenant network is offered alongside it; the law
-  // firm's own network is preferred by default, and the reviewer can switch.
+  // Single-tenant-network cutover: resolves the tenant's one shared network id — there's
+  // no longer a choice of networks. Visibility of individual providers within it is still
+  // scoped by the request's law firm organizationId (see fetchNetworkProviders).
   useEffect(() => {
     if (!request) return;
     let cancelled = false;
-    setNetworkOptions([]);
     setSelectedNetworkId(null);
 
     fetchNetworkList(request.lawFirmOrganizationId || undefined)
       .then(networks => {
         if (cancelled) return;
-        setNetworkOptions(networks);
-        const lawFirmNetwork = request.lawFirmOrganizationId
-          ? networks.find(n => n.owningOrganizationId === request.lawFirmOrganizationId)
-          : undefined;
-        const tenantNetwork = networks.find(n => !n.owningOrganizationId);
-        setSelectedNetworkId((lawFirmNetwork ?? tenantNetwork ?? networks[0])?.id ?? null);
+        setSelectedNetworkId(networks[0]?.id ?? null);
       })
       .catch(err => {
         if (cancelled) return;
@@ -518,7 +512,7 @@ export default function PendingReferralRequestDetailPage() {
     let cancelled = false;
     setProvidersLoading(true);
 
-    fetchNetworkProviders(selectedNetworkId)
+    fetchNetworkProviders(selectedNetworkId, request?.lawFirmOrganizationId || undefined)
       .then(list => {
         if (cancelled) return;
         setProviders(list);
@@ -532,13 +526,7 @@ export default function PendingReferralRequestDetailPage() {
       });
 
     return () => { cancelled = true; };
-  }, [selectedNetworkId]);
-
-  function selectNetwork(networkId: string) {
-    if (networkId === selectedNetworkId) return;
-    setSelectedNetworkId(networkId);
-    setSelectedMarkerId(null);
-  }
+  }, [selectedNetworkId, request?.lawFirmOrganizationId]);
 
   const selectedProviderKeys = useMemo(
     () => new Set(selectedProviders.map(reviewProviderKey)),
@@ -897,34 +885,6 @@ export default function PendingReferralRequestDetailPage() {
                 </div>
               )}
 
-              {networkOptions.length > 1 && (
-                <div className="rounded-lg border border-gray-200 bg-white px-3 py-3">
-                  <p className="text-sm font-medium text-gray-900">Provider network</p>
-                  <p className="mt-0.5 text-xs text-gray-500">
-                    {request.lawFirmName ?? "This law firm"} has its own provider network. Choose which network to search.
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {networkOptions.map(n => {
-                      const active = n.id === selectedNetworkId;
-                      return (
-                        <button
-                          key={n.id}
-                          type="button"
-                          onClick={() => selectNetwork(n.id)}
-                          disabled={!isEditing}
-                          className={`cursor-pointer rounded-md border px-3 py-1.5 text-left text-sm disabled:cursor-not-allowed disabled:opacity-50 ${
-                            active
-                              ? "border-primary bg-primary/10 text-primary font-medium"
-                              : "border-gray-300 text-gray-700 hover:bg-gray-50"
-                          }`}
-                        >
-                          {networkDisplayName(n, tenantDisplayName)}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
 
               <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-3">
                 <div className="min-w-0">

@@ -24,6 +24,7 @@ interface SetupForm {
   email: string;
   phone: string;
   specialtyIds: string[];
+  visibility: string;
 }
 
 interface EditLocationForm {
@@ -135,6 +136,8 @@ interface ProviderEditModalProps {
   provider: NetworkProviderItem | null;
   providers: NetworkProviderItem[];
   specialtyOptions: SpecialtyOption[];
+  /** 4-AC3: True only for TenantAdmin / PlatformAdmin — can toggle Public/Private visibility. */
+  canManageVisibility: boolean;
   onClose: () => void;
   onProvidersChange: (
     updater: (prev: NetworkProviderItem[]) => NetworkProviderItem[],
@@ -147,6 +150,7 @@ export function ProviderEditModal({
   provider,
   providers,
   specialtyOptions,
+  canManageVisibility,
   onClose,
   onProvidersChange,
   onToast,
@@ -156,7 +160,7 @@ export function ProviderEditModal({
 
   const [setupForm, setSetupForm] = useState<SetupForm>({
     title: "", firstName: "", lastName: "", organizationName: "",
-    email: "", phone: "", specialtyIds: [],
+    email: "", phone: "", specialtyIds: [], visibility: "Private",
   });
   const [editLocations, setEditLocations] = useState<EditLocationForm[]>([]);
   const [savingEdit, setSavingEdit] = useState(false);
@@ -182,6 +186,7 @@ export function ProviderEditModal({
       email: provider.email ?? "",
       phone: formatPhoneInput(provider.phone ?? ""),
       specialtyIds: provider.specialties?.map((s) => s.id) ?? [],
+      visibility: provider.visibility ?? "Private",
     });
     const pid = providerIdentityId(provider);
     setEditLocations(
@@ -275,6 +280,9 @@ export function ProviderEditModal({
       specialtyIds: setupForm.specialtyIds,
       isMobile: location.isMobile,
       serviceRadiusMiles: location.isMobile ? Number(location.serviceRadiusMiles) : null,
+      // 4-AC3: only send Visibility when the caller is permitted to change it — the
+      // backend also enforces this (403 for non-tenant-admins), this is defense in depth.
+      visibility: canManageVisibility ? setupForm.visibility : undefined,
     };
   }
 
@@ -295,6 +303,7 @@ export function ProviderEditModal({
           specialties: updated.specialties,
           primarySpecialtyId: updated.primarySpecialtyId,
           primarySpecialty: updated.primarySpecialty,
+          visibility: updated.visibility,
         };
       }),
     );
@@ -474,6 +483,54 @@ export function ProviderEditModal({
             Update provider setup details and manage each facility/location in this
             network. Specialty is required before saving changes.
           </p>
+
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-neutral-200 bg-white px-4 py-3">
+            <div>
+              <p className="text-sm font-medium text-neutral-950">Network visibility</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {setupForm.visibility === "Public"
+                  ? "Public — visible in the shared tenant network."
+                  : "Private — visible only within this Law Firm's network."}
+                {!canManageVisibility && " Only a tenant administrator can change this."}
+              </p>
+            </div>
+            {canManageVisibility ? (
+              <div className="inline-flex rounded-lg border border-gray-200 bg-white overflow-hidden shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setSetupForm((f) => ({ ...f, visibility: "Private" }))}
+                  className={`px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
+                    setupForm.visibility !== "Public"
+                      ? "bg-neutral-900 text-white"
+                      : "bg-white text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  Private
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSetupForm((f) => ({ ...f, visibility: "Public" }))}
+                  className={`px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
+                    setupForm.visibility === "Public"
+                      ? "bg-blue-600 text-white"
+                      : "bg-white text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  Public
+                </button>
+              </div>
+            ) : (
+              <span
+                className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium border shrink-0 ${
+                  setupForm.visibility === "Public"
+                    ? "bg-blue-50 text-blue-700 border-blue-200"
+                    : "bg-gray-50 text-gray-600 border-gray-200"
+                }`}
+              >
+                {setupForm.visibility === "Public" ? "Public" : "Private"}
+              </span>
+            )}
+          </div>
 
           <div className="space-y-3">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">

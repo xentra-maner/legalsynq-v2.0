@@ -10,9 +10,10 @@ using Xunit;
 
 namespace CareConnect.Tests.Application;
 
-// LSV3-1084: a CareConnectReferrerAdmin (law-firm-scoped, not a NetworkManager or system
-// admin) may only rename/delete a network their own organization created. Networks created
-// before this field existed (OwningOrganizationId == null) are treated as tenant-admin-owned.
+// Single-tenant-network cutover: nobody "owns" the shared ProviderNetwork anymore — only
+// a tenant/platform admin or NetworkManager may rename/describe it. A CareConnectReferrerAdmin
+// (law-firm-scoped, not a NetworkManager or system admin) can no longer edit the network's own
+// metadata at all, regardless of who created it historically.
 public class NetworkOwnershipTests
 {
     private static NetworkService BuildSut(INetworkRepository networks) =>
@@ -24,12 +25,11 @@ public class NetworkOwnershipTests
             NullLogger<NetworkService>.Instance);
 
     [Fact]
-    public async Task UpdateAsync_WhenCallerDidNotOwnNetwork_ThrowsForbidden()
+    public async Task UpdateAsync_WhenCallerIsReferrerAdmin_ThrowsForbidden()
     {
         var tenantId = Guid.CreateVersion7();
-        var ownerOrgId = Guid.CreateVersion7();
         var callerOrgId = Guid.CreateVersion7();
-        var network = ProviderNetwork.Create(tenantId, "Tenant Network", string.Empty, ownerOrgId);
+        var network = ProviderNetwork.Create(tenantId, "Provider Network", string.Empty);
 
         var networks = new Mock<INetworkRepository>();
         networks.Setup(r => r.GetWithProvidersAsync(tenantId, network.Id, It.IsAny<CancellationToken>()))
@@ -45,31 +45,10 @@ public class NetworkOwnershipTests
     }
 
     [Fact]
-    public async Task UpdateAsync_WhenNetworkHasNoOwner_TreatedAsTenantAdminOwned_ThrowsForbiddenForReferrerAdmin()
-    {
-        // Every network that existed before LSV3-1084 has OwningOrganizationId == null —
-        // these must stay view-only for a ReferrerAdmin-only caller.
-        var tenantId = Guid.CreateVersion7();
-        var callerOrgId = Guid.CreateVersion7();
-        var network = ProviderNetwork.Create(tenantId, "Legacy Network", string.Empty);
-
-        var networks = new Mock<INetworkRepository>();
-        networks.Setup(r => r.GetWithProvidersAsync(tenantId, network.Id, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(network);
-
-        var sut = BuildSut(networks.Object);
-
-        await Assert.ThrowsAsync<ForbiddenException>(() =>
-            sut.UpdateAsync(tenantId, network.Id, null, new UpdateNetworkRequest("New Name", ""), default,
-                isTenantAdmin: false, callerOrgId: callerOrgId, isNetworkManager: false));
-    }
-
-    [Fact]
-    public async Task UpdateAsync_WhenCallerOwnsNetwork_Succeeds()
+    public async Task UpdateAsync_WhenCallerIsTenantAdmin_Succeeds()
     {
         var tenantId = Guid.CreateVersion7();
-        var callerOrgId = Guid.CreateVersion7();
-        var network = ProviderNetwork.Create(tenantId, "My Network", string.Empty, callerOrgId);
+        var network = ProviderNetwork.Create(tenantId, "Provider Network", string.Empty);
 
         var networks = new Mock<INetworkRepository>();
         networks.Setup(r => r.GetWithProvidersAsync(tenantId, network.Id, It.IsAny<CancellationToken>()))
@@ -82,18 +61,17 @@ public class NetworkOwnershipTests
         var sut = BuildSut(networks.Object);
 
         var result = await sut.UpdateAsync(tenantId, network.Id, null, new UpdateNetworkRequest("New Name", ""), default,
-            isTenantAdmin: false, callerOrgId: callerOrgId, isNetworkManager: false);
+            isTenantAdmin: true, callerOrgId: null, isNetworkManager: false);
 
         Assert.Equal("New Name", result.Name);
     }
 
     [Fact]
-    public async Task UpdateAsync_WhenCallerIsNetworkManager_BypassesOwnershipCheck()
+    public async Task UpdateAsync_WhenCallerIsNetworkManager_Succeeds()
     {
         var tenantId = Guid.CreateVersion7();
-        var ownerOrgId = Guid.CreateVersion7();
         var callerOrgId = Guid.CreateVersion7();
-        var network = ProviderNetwork.Create(tenantId, "Tenant Network", string.Empty, ownerOrgId);
+        var network = ProviderNetwork.Create(tenantId, "Provider Network", string.Empty);
 
         var networks = new Mock<INetworkRepository>();
         networks.Setup(r => r.GetWithProvidersAsync(tenantId, network.Id, It.IsAny<CancellationToken>()))
@@ -111,57 +89,16 @@ public class NetworkOwnershipTests
         Assert.Equal("New Name", result.Name);
     }
 
-    [Fact]
-    public async Task DeleteAsync_WhenCallerDidNotOwnNetwork_ThrowsForbidden()
-    {
-        var tenantId = Guid.CreateVersion7();
-        var ownerOrgId = Guid.CreateVersion7();
-        var callerOrgId = Guid.CreateVersion7();
-        var network = ProviderNetwork.Create(tenantId, "Tenant Network", string.Empty, ownerOrgId);
-
-        var networks = new Mock<INetworkRepository>();
-        networks.Setup(r => r.GetByIdAsync(tenantId, network.Id, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(network);
-
-        var sut = BuildSut(networks.Object);
-
-        await Assert.ThrowsAsync<ForbiddenException>(() =>
-            sut.DeleteAsync(tenantId, network.Id, default,
-                isTenantAdmin: false, callerOrgId: callerOrgId, isNetworkManager: false));
-
-        networks.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
-    }
+    // ── GetOrCreateTenantNetworkAsync ────────────────────────────────────────
 
     [Fact]
-    public async Task DeleteAsync_WhenCallerOwnsNetwork_Succeeds()
+    public async Task GetOrCreateTenantNetworkAsync_WhenNoneExists_CreatesOne()
     {
         var tenantId = Guid.CreateVersion7();
-        var callerOrgId = Guid.CreateVersion7();
-        var network = ProviderNetwork.Create(tenantId, "My Network", string.Empty, callerOrgId);
 
         var networks = new Mock<INetworkRepository>();
-        networks.Setup(r => r.GetByIdAsync(tenantId, network.Id, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(network);
-        networks.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
-
-        var sut = BuildSut(networks.Object);
-
-        await sut.DeleteAsync(tenantId, network.Id, default,
-            isTenantAdmin: false, callerOrgId: callerOrgId, isNetworkManager: false);
-
-        networks.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    [Fact]
-    public async Task CreateAsync_StampsOwningOrganizationIdFromCaller()
-    {
-        var tenantId = Guid.CreateVersion7();
-        var callerOrgId = Guid.CreateVersion7();
-
-        var networks = new Mock<INetworkRepository>();
-        networks.Setup(r => r.NameExistsAsync(tenantId, "New Network", null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
+        networks.Setup(r => r.GetSingleForTenantAsync(tenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ProviderNetwork?)null);
         ProviderNetwork? added = null;
         networks.Setup(r => r.AddAsync(It.IsAny<ProviderNetwork>(), It.IsAny<CancellationToken>()))
             .Callback<ProviderNetwork, CancellationToken>((n, _) => added = n)
@@ -170,10 +107,29 @@ public class NetworkOwnershipTests
             .Returns(Task.CompletedTask);
 
         var sut = BuildSut(networks.Object);
+        var result = await sut.GetOrCreateTenantNetworkAsync(tenantId);
 
-        await sut.CreateAsync(tenantId, null, new CreateNetworkRequest("New Network", ""), default,
-            owningOrganizationId: callerOrgId);
+        Assert.NotNull(added);
+        Assert.Equal(added!.Id, result.Id);
+        Assert.Null(added.OwningOrganizationId);
+        networks.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
 
-        Assert.Equal(callerOrgId, added?.OwningOrganizationId);
+    [Fact]
+    public async Task GetOrCreateTenantNetworkAsync_WhenOneExists_ReturnsItWithoutCreating()
+    {
+        var tenantId = Guid.CreateVersion7();
+        var existing = ProviderNetwork.Create(tenantId, "Provider Network", string.Empty);
+
+        var networks = new Mock<INetworkRepository>();
+        networks.Setup(r => r.GetSingleForTenantAsync(tenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existing);
+
+        var sut = BuildSut(networks.Object);
+        var result = await sut.GetOrCreateTenantNetworkAsync(tenantId);
+
+        Assert.Equal(existing.Id, result.Id);
+        networks.Verify(r => r.AddAsync(It.IsAny<ProviderNetwork>(), It.IsAny<CancellationToken>()), Times.Never);
+        networks.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 }

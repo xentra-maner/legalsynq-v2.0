@@ -21,7 +21,6 @@ import {
   type ReferralUrgencyValue,
 } from "@/types/careconnect";
 import { formatPhoneDisplay, formatPhoneInput, isValidPhone, stripPhone } from "@/lib/phone";
-import { networkDisplayName } from "@/lib/network-display-name";
 import { isValidIsoDate, hasReasonableYear } from "@/lib/daterange";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Modal, ConfirmDialog } from "@/components/ui/modal";
@@ -501,8 +500,12 @@ async function fetchReferralPortalPublicNetworkList(organizationId?: string): Pr
   return await networksRes.json() as PublicNetworkSummary[];
 }
 
-async function fetchReferralPortalPublicNetworkMarkers(networkId: string): Promise<ProviderPickerMarker[]> {
-  const detailRes = await fetch(`/api/public/careconnect/api/public/network/${networkId}/detail`);
+// organizationId (the selected law firm) activates server-side Visibility filtering:
+// a Private provider only appears when it belongs to this organization; Public
+// providers always appear regardless of which (or whether any) law firm is selected.
+async function fetchReferralPortalPublicNetworkMarkers(networkId: string, organizationId?: string): Promise<ProviderPickerMarker[]> {
+  const qs = organizationId ? `?organizationId=${encodeURIComponent(organizationId)}` : "";
+  const detailRes = await fetch(`/api/public/careconnect/api/public/network/${networkId}/detail${qs}`);
   if (!detailRes.ok) throw new Error("Failed to load public provider network.");
   const detail = await detailRes.json() as PublicNetworkDetail;
   const markerByNetworkProviderId = new Map(
@@ -541,11 +544,10 @@ async function fetchReferralPortalPublicNetworkMarkers(networkId: string): Promi
 }
 
 export default function ReferralPortalSubmitPage() {
-  const { code, tenantDisplayName } = useRepresentativePortal();
+  const { code } = useRepresentativePortal();
   const providerRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [lawFirms, setLawFirms] = useState<LawFirmOption[]>([]);
   const [treatmentTypes, setTreatmentTypes] = useState<TreatmentTypeOption[]>([]);
-  const [networkOptions, setNetworkOptions] = useState<PublicNetworkSummary[]>([]);
   const [selectedNetworkId, setSelectedNetworkId] = useState<string | null>(null);
   const [providerMarkers, setProviderMarkers] = useState<ProviderPickerMarker[]>([]);
   const [providersLoading, setProvidersLoading] = useState(true);
@@ -587,12 +589,11 @@ export default function ReferralPortalSubmitPage() {
       .catch(() => {});
   }, []);
 
-  // Reloads the network list whenever the selected law firm changes. When a law
-  // firm has its own network, the tenant network is offered alongside it; the
-  // law firm's own network is preferred by default, and the user can switch.
+  // Single-tenant-network cutover: resolves the tenant's one shared network id — there's
+  // no longer a choice of networks. Visibility of individual providers within it is still
+  // scoped by the selected law firm's organizationId (see fetchReferralPortalPublicNetworkMarkers).
   useEffect(() => {
     let cancelled = false;
-    setNetworkOptions([]);
     setSelectedNetworkId(null);
     setPreferredProviders([]);
     setSelectedMarkerId(null);
@@ -600,12 +601,7 @@ export default function ReferralPortalSubmitPage() {
     fetchReferralPortalPublicNetworkList(form.lawFirmOrganizationId || undefined)
       .then(networks => {
         if (cancelled) return;
-        setNetworkOptions(networks);
-        const lawFirmNetwork = form.lawFirmOrganizationId
-          ? networks.find(n => n.owningOrganizationId === form.lawFirmOrganizationId)
-          : undefined;
-        const tenantNetwork = networks.find(n => !n.owningOrganizationId);
-        setSelectedNetworkId((lawFirmNetwork ?? tenantNetwork ?? networks[0])?.id ?? null);
+        setSelectedNetworkId(networks[0]?.id ?? null);
       })
       .catch(err => {
         if (cancelled) return;
@@ -628,7 +624,7 @@ export default function ReferralPortalSubmitPage() {
     let cancelled = false;
     setProvidersLoading(true);
 
-    fetchReferralPortalPublicNetworkMarkers(selectedNetworkId)
+    fetchReferralPortalPublicNetworkMarkers(selectedNetworkId, form.lawFirmOrganizationId || undefined)
       .then(markers => {
         if (cancelled) return;
         setProviderMarkers(markers);
@@ -644,7 +640,7 @@ export default function ReferralPortalSubmitPage() {
       });
 
     return () => { cancelled = true; };
-  }, [selectedNetworkId]);
+  }, [selectedNetworkId, form.lawFirmOrganizationId]);
 
   useEffect(() => {
     const value = providerSearch.trim();
@@ -789,13 +785,6 @@ export default function ReferralPortalSubmitPage() {
       .map(([code, name]) => ({ code, name }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [providerMarkers]);
-
-  function selectNetwork(networkId: string) {
-    if (networkId === selectedNetworkId) return;
-    setSelectedNetworkId(networkId);
-    setPreferredProviders([]);
-    setSelectedMarkerId(null);
-  }
 
   function openLawFirmModal() {
     setPendingLawFirmId(form.lawFirmOrganizationId);
@@ -1262,35 +1251,6 @@ export default function ReferralPortalSubmitPage() {
             <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
               Provider selection is recorded as a recommendation for the law firm. The provider is not contacted from this portal.
             </div>
-
-            {networkOptions.length > 1 && (
-              <div className="rounded-lg border border-gray-200 bg-white px-3 py-3">
-                <p className="text-sm font-medium text-gray-900">Provider network</p>
-                <p className="mt-0.5 text-xs text-gray-500">
-                  {selectedLawFirm?.name ?? "This law firm"} has its own provider network. Choose which network to search.
-                </p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {networkOptions.map(n => {
-                    const active = n.id === selectedNetworkId;
-                    return (
-                      <button
-                        key={n.id}
-                        type="button"
-                        onClick={() => selectNetwork(n.id)}
-                        disabled={submitting}
-                        className={`cursor-pointer rounded-md border px-3 py-1.5 text-left text-sm disabled:cursor-not-allowed disabled:opacity-50 ${
-                          active
-                            ? "border-primary bg-primary/10 text-primary font-medium"
-                            : "border-gray-300 text-gray-700 hover:bg-gray-50"
-                        }`}
-                      >
-                        {networkDisplayName(n, tenantDisplayName)}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
 
             <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-3">
               <div className="min-w-0">

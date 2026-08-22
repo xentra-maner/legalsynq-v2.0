@@ -170,19 +170,42 @@ Normal referrals now include immutable `Origin` (`LawFirm` for direct law-firm s
 (`Private` or `Public`); non-admin-created entries default to private, and only tenant/platform admins
 may make a provider public.
 
-LSV3-1084: editing or removing a network provider (`PUT`/`DELETE /api/networks/{id}/providers/{providerId}`)
-is further restricted by `OwningOrganizationId` — a caller holding only `CARECONNECT_REFERRER_ADMIN` (not
+**Single-tenant-network cutover (supersedes the original LSV3-1084 per-network-ownership design
+below).** Each tenant now has exactly one shared `ProviderNetwork` — law firms no longer create their
+own separate network. `POST /api/networks` (create) and `DELETE /api/networks/{id}` (delete) have been
+removed from the API entirely; `GET /api/networks` bootstraps the tenant's one network on first access
+via `NetworkService.GetOrCreateTenantNetworkAsync` if it doesn't exist yet, so callers always get a
+network id back. `PUT /api/networks/{id}` (rename/describe) is now restricted to
+`CARECONNECT_NETWORK_MANAGER` or a tenant/platform admin — a `CARECONNECT_REFERRER_ADMIN`-only caller
+can no longer edit the shared network's own name/description at all (there's no "their own network"
+carve-out anymore). The frontend's separate "Networks" (list of networks) admin tab has been retired.
+Two role-scoped screens share the same `MyNetworkClient` component against this one network: "My Network"
+(`/careconnect/my-network`, tenant portal, `CARECONNECT_NETWORK_MANAGER`/admin — unchanged from before the
+cutover, includes the public Network URL box) and "Network Setup" (`/careconnect/network-setup`,
+`CARECONNECT_REFERRER_ADMIN`/law-firm — no Network URL box, since that's a tenant-level concern, not a
+per-law-firm one). They were deliberately kept as two separate routes/nav entries rather than merged into
+one, so the existing NetworkManager-facing screen's behavior stays untouched for its current users.
+
+Per-provider ownership and visibility (`NetworkProvider.OwningOrganizationId`/`Visibility`) are now the
+*sole* mechanism for "whose provider is this" and "who can see it" — and, critically, `Visibility` is
+now actually enforced on every read path, not just stored/displayed as before. `ProviderVisibility.IsVisibleTo(np,
+viewerOrgId, viewerSeesAll)` gates `NetworkService.GetByIdAsync`/`GetAllAsync`/`GetMarkersAsync` (internal,
+authenticated) and `PublicNetworkEndpoints`'s `/providers`, `/providers/markers`, `/detail` (anonymous,
+scoped by an optional `organizationId` query param): a `Private` provider is visible only to the
+organization that owns it (or a caller who "sees all" — tenant/platform admin or NetworkManager); a
+`Public` provider, or one with no recorded owner (legacy/tenant-created), is visible to everyone.
+
+LSV3-1084 (historical): editing or removing a network provider (`PUT`/`DELETE /api/networks/{id}/providers/{providerId}`)
+is restricted by `OwningOrganizationId` — a caller holding only `CARECONNECT_REFERRER_ADMIN` (not
 `CARECONNECT_NETWORK_MANAGER`, and not a tenant/platform admin) may only edit or remove providers their own
 organization added; any other provider in the network is view-only for them. NetworkManager and system
-admin callers are unrestricted, as before.
+admin callers are unrestricted, as before. This part of LSV3-1084 is unchanged by the single-tenant-network
+cutover — only the *network-level* (not provider-level) ownership rules were retired.
 
-The `ProviderNetwork` entity itself also carries `OwningOrganizationId` (added via the
-`EnsureSchemaObjects` runtime schema-repair path in `CareConnect.Api/Program.cs`, not a classic EF
-migration — see that file's comments for why). The same rule applies to renaming/deleting a network
-(`PUT`/`DELETE /api/networks/{id}`): a `CARECONNECT_REFERRER_ADMIN`-only caller may only rename or
-delete a network their own organization created via `POST /api/networks`; every network that predates
-this field has `OwningOrganizationId = NULL` and is treated as tenant-admin-owned (view-only for such
-callers). NetworkManager and system admin callers are unrestricted.
+`ProviderNetwork.OwningOrganizationId` itself (added via the `EnsureSchemaObjects` runtime schema-repair
+path in `CareConnect.Api/Program.cs`, not a classic EF migration — see that file's comments for why) is
+retained on the schema but no longer written to a non-null value on new networks going forward; it is a
+candidate for removal in a future cleanup migration once nothing reads it.
 
 ### Provider specialties
 

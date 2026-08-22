@@ -26,6 +26,18 @@ public class NetworkRepository : INetworkRepository
             .ToListAsync(ct);
     }
 
+    // Single-tenant-network cutover: resolves the tenant's one canonical network. If a
+    // legacy tenant somehow has more than one non-deleted row (predating this change),
+    // deterministically picks the oldest so every caller agrees on which one is "the" network.
+    public async Task<ProviderNetwork?> GetSingleForTenantAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        return await _db.ProviderNetworks
+            .AsNoTracking()
+            .Where(n => n.TenantId == tenantId && !n.IsDeleted)
+            .OrderBy(n => n.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
+    }
+
     // BLK-PERF-01: Replaces the N+1 pattern in PublicNetworkEndpoints GET / where each
     // network in the list triggered a separate GetWithProvidersAsync round-trip.
     // A single query projects network fields + sub-query COUNT() of NetworkProviders.
@@ -43,7 +55,14 @@ public class NetworkRepository : INetworkRepository
                 n.Id,
                 n.Name,
                 (string?)n.Description,
-                n.NetworkProviders.Count(np => np.IsActive && np.Provider.IsActive && np.Facility.IsActive),
+                // Visibility filter inlined (not a shared IsVisibleTo() call) so EF Core can
+                // translate this to SQL — mirrors ProviderVisibility.IsVisibleTo's rules with
+                // viewerSeesAll always false here (anonymous/summary-count context).
+                n.NetworkProviders.Count(np =>
+                    np.IsActive && np.Provider.IsActive && np.Facility.IsActive &&
+                    (np.Visibility == ProviderVisibility.Public
+                        || np.OwningOrganizationId == null
+                        || np.OwningOrganizationId == organizationId)),
                 n.OwningOrganizationId))
             .ToListAsync(ct);
     }

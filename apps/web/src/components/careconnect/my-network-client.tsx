@@ -55,8 +55,14 @@ interface MyNetworkClientProps {
   tenantName: string;
   /** True for NetworkManager / TenantAdmin / PlatformAdmin — can edit/remove any provider. */
   canManageAll: boolean;
+  /** 4-AC3: True only for TenantAdmin / PlatformAdmin — can toggle a provider's Public/Private visibility. */
+  canManageVisibility: boolean;
+  /** Single-tenant-network cutover: true for anyone who may add a provider to the shared network (NetworkManager / ReferrerAdmin / admin) — no longer gated by network ownership. */
+  canAddProviders: boolean;
   /** The caller's own organization id — a CareConnectReferrerAdmin without canManageAll may only edit/remove providers their org added. */
   callerOrgId?: string | null;
+  /** True on the tenant portal's "My Network" screen (NetworkManager audience) — shows the public network URL. False on the law firm "Network Setup" screen, which doesn't need it. */
+  showNetworkUrl?: boolean;
 }
 
 type PanelMode =
@@ -164,7 +170,10 @@ export function MyNetworkClient({
   specialtyOptions,
   tenantName,
   canManageAll,
+  canManageVisibility,
+  canAddProviders,
   callerOrgId,
+  showNetworkUrl = true,
 }: MyNetworkClientProps) {
   const [network, setNetwork] = useState<NetworkDetail | null>(initialNetwork);
   const [providers, setProviders] = useState<NetworkProviderItem[]>(
@@ -240,26 +249,24 @@ export function MyNetworkClient({
       !(Number(newForm.serviceRadiusMiles) > 0) ||
       Number(newForm.serviceRadiusMiles) > MAX_SERVICE_RADIUS_MILES);
   const hasNoSpecialty = newForm.specialtyIds.length === 0;
-  // LSV3-1084: a CareConnectReferrerAdmin may only add providers to a network their own
-  // organization created; a tenant-admin-owned (or NetworkManager-owned) network is view-only.
-  const canAddProviders =
-    canManageAll || (!!callerOrgId && network?.owningOrganizationId === callerOrgId);
   useEffect(() => {
-    setNetworkUrl(window.location.origin + "/careconnect/network");
-  }, []);
+    if (showNetworkUrl) setNetworkUrl(window.location.origin + "/careconnect/network");
+  }, [showNetworkUrl]);
 
-  // ── Network creation ──────────────────────────────────────────────────────
+  // ── Network bootstrap ────────────────────────────────────────────────────
+  // Single-tenant-network cutover: there's no longer a user-facing "create a
+  // network" action — GET /api/networks bootstraps the tenant's one shared
+  // network automatically on first access. This retry path only exists for the
+  // rare case where the initial server-side fetch failed transiently.
 
   async function handleCreateNetwork() {
     setCreating(true);
     try {
-      const { data } = await careConnectApi.networks.create({
-        name: "My Preferred Providers",
-        description: "Our preferred provider network.",
-      });
-      // Reload network detail via getById
+      const { data } = await careConnectApi.networks.list();
+      const id = data[0]?.id;
+      if (!id) throw new Error("No network returned.");
       const detailRes = await fetch(
-        `/api/careconnect/api/networks/${data.id}`,
+        `/api/careconnect/api/networks/${id}`,
         { credentials: "include" },
       );
       if (detailRes.ok) {
@@ -267,11 +274,11 @@ export function MyNetworkClient({
         setNetwork(detail);
         setProviders(detail.providers ?? []);
       } else {
-        setNetwork({ ...data, providers: [] } as NetworkDetail);
+        setNetwork({ ...data[0], providers: [] } as NetworkDetail);
         setProviders([]);
       }
     } catch {
-      showToast("Failed to create network. Please try again.");
+      showToast("Failed to load your network. Please try again.");
     } finally {
       setCreating(false);
     }
@@ -885,10 +892,10 @@ export function MyNetworkClient({
       <div className="rounded-xl border-2 border-dashed border-gray-200 py-16 text-center">
         <i className="ri-share-circle-line text-4xl text-gray-300" />
         <p className="mt-3 text-base font-medium text-gray-700">
-          No preferred provider network yet
+          Unable to load your provider network
         </p>
         <p className="mt-1 text-sm text-gray-400">
-          Create your network to start building a list of preferred providers.
+          Something went wrong loading your network. Try again.
         </p>
         <button
           onClick={handleCreateNetwork}
@@ -898,12 +905,12 @@ export function MyNetworkClient({
           {creating ? (
             <>
               <span className="h-3.5 w-3.5 rounded-full border-2 border-white/60 border-t-transparent animate-spin" />
-              Creating…
+              Loading…
             </>
           ) : (
             <>
-              <i className="ri-add-line" />
-              Create My Network
+              <i className="ri-refresh-line" />
+              Retry
             </>
           )}
         </button>
@@ -949,7 +956,7 @@ export function MyNetworkClient({
           </div>
 
           {/* Network URL */}
-          {networkUrl && (
+          {showNetworkUrl && networkUrl && (
             <div className="mt-2 flex items-center gap-2">
               <span className="text-xs font-medium text-gray-400 shrink-0">
                 Network URL
@@ -999,88 +1006,75 @@ export function MyNetworkClient({
         )}
       </div>
 
-      {/* ── Add Provider Panel ──────────────────────────────────────────── */}
-      {panelMode !== "closed" && panelMode !== "edit" && (
-        <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-5">
-          {/* Panel header */}
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold text-gray-900">
-                {panelMode === "location"
-                  ? "Add Provider Location"
-                  : "Add Provider"}
-              </h2>
-              {panelMode === "confirm" && (
-                <span className="text-xs text-blue-700 bg-blue-100 border border-blue-200 rounded-full px-2 py-0.5">
-                  Confirm Match
-                </span>
-              )}
-              {panelMode === "create" && (
-                <span className="text-xs text-violet-700 bg-violet-50 border border-violet-200 rounded-full px-2 py-0.5">
-                  New Provider
-                </span>
-              )}
-              {panelMode === "location" && (
-                <span className="text-xs text-cyan-700 bg-cyan-50 border border-cyan-200 rounded-full px-2 py-0.5">
-                  New Location
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              {panelMode === "search" && (
-                <button
-                  onClick={() => setPanelMode("create")}
-                  className="text-xs text-blue-600 hover:underline"
-                >
-                  Not found? Add new instead
-                </button>
-              )}
-              {panelMode === "create" && (
-                <button
-                  onClick={() => setPanelMode("search")}
-                  className="text-xs text-gray-500 hover:underline"
-                >
-                  ← Back to search
-                </button>
-              )}
-              {panelMode === "location" && (
-                <button
-                  onClick={() => {
-                    if (locationReturnsToEdit) {
-                      setLocationReturnsToEdit(false);
-                      setLocationTarget(null);
-                      setCreateError(null);
-                      setPanelMode("edit");
-                    } else {
-                      setPanelMode("search");
-                      setLocationTarget(null);
-                      setCreateError(null);
-                    }
-                  }}
-                  className="text-xs text-gray-500 hover:underline"
-                >
-                  {locationReturnsToEdit
-                    ? "← Back to provider"
-                    : "← Back to search"}
-                </button>
-              )}
-              {panelMode === "confirm" && (
-                <button
-                  onClick={() => setPanelMode("search")}
-                  className="text-xs text-gray-500 hover:underline"
-                >
-                  ← Back
-                </button>
-              )}
-              <button
-                onClick={closeAddPanel}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <i className="ri-close-line text-lg" />
-              </button>
-            </div>
-          </div>
-
+      {/* ── Add Provider Modal ──────────────────────────────────────────── */}
+      <Modal
+        size="2xl"
+        open={panelMode !== "closed" && panelMode !== "edit"}
+        onClose={closeAddPanel}
+        title={panelMode === "location" ? "Add Provider Location" : "Add Provider"}
+        titleSizeClassName="text-xl"
+        cardClassName="rounded-[20px] shadow-xl border border-neutral-200"
+        headerClassName="flex items-center justify-between px-8 pt-8 pb-6"
+        bodyClassName="flex-1 overflow-y-auto px-8 pb-8"
+        titleExtra={
+          panelMode === "confirm" ? (
+            <span className="inline-flex items-center h-7 px-3 py-1 rounded-2xl text-sm font-medium text-blue-700 bg-blue-500/5 border border-blue-500">
+              Confirm Match
+            </span>
+          ) : panelMode === "create" ? (
+            <span className="inline-flex items-center h-7 px-3 py-1 rounded-2xl text-sm font-medium text-violet-700 bg-violet-500/5 border border-violet-500">
+              New Provider
+            </span>
+          ) : panelMode === "location" ? (
+            <span className="inline-flex items-center h-7 px-3 py-1 rounded-2xl text-sm font-medium text-cyan-700 bg-cyan-500/5 border border-cyan-500">
+              New Location
+            </span>
+          ) : undefined
+        }
+        headerActions={
+          panelMode === "search" ? (
+            <button
+              onClick={() => setPanelMode("create")}
+              className="text-xs text-blue-600 hover:underline cursor-pointer"
+            >
+              Not found? Add new instead
+            </button>
+          ) : panelMode === "create" ? (
+            <button
+              onClick={() => setPanelMode("search")}
+              className="text-xs text-gray-500 hover:underline cursor-pointer"
+            >
+              ← Back to search
+            </button>
+          ) : panelMode === "location" ? (
+            <button
+              onClick={() => {
+                if (locationReturnsToEdit) {
+                  setLocationReturnsToEdit(false);
+                  setLocationTarget(null);
+                  setCreateError(null);
+                  setPanelMode("edit");
+                } else {
+                  setPanelMode("search");
+                  setLocationTarget(null);
+                  setCreateError(null);
+                }
+              }}
+              className="text-xs text-gray-500 hover:underline cursor-pointer"
+            >
+              {locationReturnsToEdit ? "← Back to provider" : "← Back to search"}
+            </button>
+          ) : panelMode === "confirm" ? (
+            <button
+              onClick={() => setPanelMode("search")}
+              className="text-xs text-gray-500 hover:underline cursor-pointer"
+            >
+              ← Back
+            </button>
+          ) : undefined
+        }
+      >
+        <div className="space-y-6">
           {/* ── Search mode ── */}
           {panelMode === "search" && (
             <div className="space-y-3">
@@ -1492,7 +1486,7 @@ export function MyNetworkClient({
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">
-                        First name *
+                        First name <span className="text-red-500">*</span>
                       </label>
                       <input
                         required
@@ -1509,7 +1503,7 @@ export function MyNetworkClient({
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Last name *
+                        Last name <span className="text-red-500">*</span>
                       </label>
                       <input
                         required
@@ -1605,7 +1599,7 @@ export function MyNetworkClient({
                   {panelMode !== "location" && (
                     <div className="sm:col-span-2">
                       <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Specialty *
+                        Specialty <span className="text-red-500">*</span>
                       </label>
                       <div
                         className={`rounded-md border bg-white p-2 ${
@@ -1648,7 +1642,7 @@ export function MyNetworkClient({
                   )}
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Email{panelMode === "location" ? "" : " *"}
+                      Email{panelMode === "location" ? "" : <span className="text-red-500"> *</span>}
                     </label>
                     {panelMode === "location" ? (
                       <p className="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-700">
@@ -1669,7 +1663,7 @@ export function MyNetworkClient({
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Phone{panelMode === "location" ? "" : " *"}
+                      Phone{panelMode === "location" ? "" : <span className="text-red-500"> *</span>}
                     </label>
                     {panelMode === "location" ? (
                       <p className="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-700">
@@ -1719,9 +1713,8 @@ export function MyNetworkClient({
                   </div>
                   <div className="relative">
                     <label className="block text-xs font-medium text-gray-600 mb-1">
-                      {newForm.isMobile
-                        ? "Service area description *"
-                        : "Address *"}
+                      {newForm.isMobile ? "Service area description" : "Address"}{" "}
+                      <span className="text-red-500">*</span>
                     </label>
                     <div className="relative">
                       <input
@@ -1774,7 +1767,7 @@ export function MyNetworkClient({
                   </div>
                   <div className="relative">
                     <label className="block text-xs font-medium text-gray-600 mb-1">
-                      City *
+                      City <span className="text-red-500">*</span>
                     </label>
                     <div className="relative">
                       <input
@@ -1830,7 +1823,7 @@ export function MyNetworkClient({
                   <div className="flex gap-2">
                     <div className="flex-1">
                       <label className="block text-xs font-medium text-gray-600 mb-1">
-                        State *
+                        State <span className="text-red-500">*</span>
                       </label>
                       <input
                         required
@@ -1852,7 +1845,7 @@ export function MyNetworkClient({
                       {newForm.isMobile ? (
                         <>
                           <label className="block text-xs font-medium text-gray-600 mb-1">
-                            Service radius (mi) *
+                            Service radius (mi) <span className="text-red-500">*</span>
                           </label>
                           <input
                             required
@@ -1882,7 +1875,7 @@ export function MyNetworkClient({
                       ) : (
                         <>
                           <label className="block text-xs font-medium text-gray-600 mb-1">
-                            ZIP *
+                            ZIP <span className="text-red-500">*</span>
                           </label>
                           <input
                             required
@@ -1963,9 +1956,8 @@ export function MyNetworkClient({
               </form>
             </div>
           )}
-
         </div>
-      )}
+      </Modal>
 
       {network && (
         <ProviderEditModal
@@ -1973,6 +1965,7 @@ export function MyNetworkClient({
           provider={editingProvider}
           providers={providers}
           specialtyOptions={specialtyOptions}
+          canManageVisibility={canManageVisibility}
           onClose={closeAddPanel}
           onProvidersChange={setProviders}
           onToast={showToast}
@@ -2057,6 +2050,9 @@ export function MyNetworkClient({
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
                     Access
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Visibility
                   </th>
                   <th className="w-10" />
                 </tr>
@@ -2255,6 +2251,15 @@ function ProviderCard({
             : "Not accepting"}
         </span>
         <AccessStageBadge stage={provider.accessStage} />
+        <span
+          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium border ${
+            provider.visibility === "Public"
+              ? "bg-blue-50 text-blue-700 border-blue-200"
+              : "bg-gray-50 text-gray-600 border-gray-200"
+          }`}
+        >
+          {provider.visibility === "Public" ? "Public" : "Private"}
+        </span>
       </div>
 
       {/* Specialties */}
@@ -2365,6 +2370,17 @@ function ProviderRow({
       <td className="px-4 py-3">
         <AccessStageBadge stage={provider.accessStage} />
       </td>
+      <td className="px-4 py-3">
+        <span
+          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium border ${
+            provider.visibility === "Public"
+              ? "bg-blue-50 text-blue-700 border-blue-200"
+              : "bg-gray-50 text-gray-600 border-gray-200"
+          }`}
+        >
+          {provider.visibility === "Public" ? "Public" : "Private"}
+        </span>
+      </td>
       <td className="px-4 py-3 text-right">
         {canManage ? (
           <div className="flex justify-end gap-1">
@@ -2386,11 +2402,7 @@ function ProviderRow({
               />
             </button>
           </div>
-        ) : (
-          <span className="text-xs text-gray-300" title="View only">
-            <i className="ri-eye-line text-base" />
-          </span>
-        )}
+        ) : null}
       </td>
     </tr>
   );

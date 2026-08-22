@@ -26,7 +26,6 @@ import type {
   NetworkSummary,
   NetworkDetail,
   NetworkProviderItem,
-  CreateNetworkRequest,
   UpdateNetworkRequest,
   NetworkProviderMarker,
   ProviderSearchResult,
@@ -299,17 +298,17 @@ export const careConnectApi = {
 
   // CC2-INT-B06: Provider networks (client-side mutations from interactive pages)
   networks: {
-    /** POST /api/networks — create a new network */
-    create: (data: CreateNetworkRequest) =>
-      apiClient.post<NetworkSummary>(`/careconnect/api/networks`, data),
+    /**
+     * GET /api/networks — single-tenant-network cutover: lists (and bootstraps, on
+     * first call for a tenant) the tenant's one shared network. There is no longer a
+     * separate "create a network" action — every tenant gets exactly one automatically.
+     */
+    list: () =>
+      apiClient.get<NetworkSummary[]>(`/careconnect/api/networks`),
 
-    /** PUT /api/networks/{id} — update network name/description */
+    /** PUT /api/networks/{id} — update network name/description (tenant admin only) */
     update: (id: string, data: UpdateNetworkRequest) =>
       apiClient.put<NetworkSummary>(`/careconnect/api/networks/${id}`, data),
-
-    /** DELETE /api/networks/{id} — soft-delete a network */
-    delete: (id: string) =>
-      apiClient.delete<void>(`/careconnect/api/networks/${id}`),
 
     /**
      * CC2-INT-B06-01: Search the shared global provider registry.

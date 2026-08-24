@@ -131,7 +131,9 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-type ProviderPreference = Pick<ProviderSummary, "id" | "facilityId" | "displayLabel" | "markerSubtitle" | "phone" | "specialties">;
+type ProviderPreference = Pick<ProviderSummary, "id" | "facilityId" | "displayLabel" | "markerSubtitle" | "specialties"> & {
+  phone?: string | null;
+};
 type ProviderPickerMarker = ProviderMarker & {
   networkProviderId?: string | null;
   facilityName?: string | null;
@@ -158,7 +160,7 @@ function providerPreferenceFromMarker(marker: ProviderPickerMarker): ProviderPre
     facilityId: marker.facilityId ?? null,
     displayLabel: marker.displayLabel,
     markerSubtitle: marker.markerSubtitle,
-    phone: marker.phone ? formatPhoneDisplay(marker.phone) : null,
+    phone: formatPhoneDisplay(marker.phone) ?? null,
     specialties: marker.specialties,
   };
 }

@@ -308,6 +308,8 @@ export interface PublicReferralRequest {
   urgency?:              string;
   treatmentTypeId?:      string;
   referralAttributionId?: string;
+  lienCompanyName?:      string;
+  lienCompanyEmail?:     string;
 }
 
 export interface PublicReferralResponse {

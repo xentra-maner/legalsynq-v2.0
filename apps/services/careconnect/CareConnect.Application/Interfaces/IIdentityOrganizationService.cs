@@ -145,6 +145,88 @@ public interface IIdentityOrganizationService
     Task<List<LawFirmOrganizationOption>> ListLawFirmOrganizationsAsync(
         Guid              tenantId,
         CancellationToken ct = default);
+
+    // ── LSV3-1083: Law-firm-scoped user management ──────────────────────────
+    //
+    // Unlike the best-effort methods above, these back a primary CRUD feature
+    // (a law-firm admin managing their own firm's users), so callers should
+    // treat a non-Success outcome as an error to surface, not a silent no-op.
+
+    Task<(LawFirmUserOperationOutcome Outcome, IReadOnlyList<LawFirmUserSummary>? Items, string? Error)> ListOrganizationUsersAsync(
+        Guid              organizationId,
+        CancellationToken ct = default);
+
+    Task<(LawFirmUserOperationOutcome Outcome, LawFirmUserInviteResult? Result, string? Error)> InviteOrganizationUserAsync(
+        Guid              organizationId,
+        Guid              tenantId,
+        string            email,
+        string            firstName,
+        string            lastName,
+        string            roleCode,
+        CancellationToken ct = default);
+
+    Task<(LawFirmUserOperationOutcome Outcome, string? Error)> ResendOrganizationUserInviteAsync(
+        Guid              organizationId,
+        Guid              userId,
+        CancellationToken ct = default);
+
+    Task<(LawFirmUserOperationOutcome Outcome, string? Error)> ActivateOrganizationUserAsync(
+        Guid              organizationId,
+        Guid              userId,
+        CancellationToken ct = default);
+
+    Task<(LawFirmUserOperationOutcome Outcome, string? Error)> DeactivateOrganizationUserAsync(
+        Guid              organizationId,
+        Guid              userId,
+        CancellationToken ct = default);
+
+    Task<(LawFirmUserOperationOutcome Outcome, Guid? AssignmentId, string? Error)> AssignOrganizationUserRoleAsync(
+        Guid              organizationId,
+        Guid              tenantId,
+        Guid              userId,
+        string            roleCode,
+        CancellationToken ct = default);
+
+    Task<(LawFirmUserOperationOutcome Outcome, string? Error)> RevokeOrganizationUserRoleAsync(
+        Guid              organizationId,
+        Guid              userId,
+        Guid              assignmentId,
+        CancellationToken ct = default);
+}
+
+/// <summary>LSV3-1083: outcome of a law-firm-scoped user-management call to Identity.</summary>
+public enum LawFirmUserOperationOutcome
+{
+    Success,
+    NotFound,
+    Conflict,
+    BadRequest,
+    ServiceUnavailable,
+}
+
+public sealed class LawFirmUserRoleAssignmentInfo
+{
+    public Guid   AssignmentId { get; init; }
+    public string RoleCode     { get; init; } = string.Empty;
+}
+
+public sealed class LawFirmUserSummary
+{
+    public Guid   UserId    { get; init; }
+    public string Email     { get; init; } = string.Empty;
+    public string FirstName { get; init; } = string.Empty;
+    public string LastName  { get; init; } = string.Empty;
+    public bool   IsActive  { get; init; }
+    public string Status    { get; init; } = string.Empty;
+    public List<LawFirmUserRoleAssignmentInfo> Roles { get; init; } = [];
+}
+
+public sealed class LawFirmUserInviteResult
+{
+    public Guid    UserId         { get; init; }
+    public Guid?   InvitationId   { get; init; }
+    public string  Email          { get; init; } = string.Empty;
+    public bool    IsNew          { get; init; }
 }
 
 // ── Result types ───────────────────────────────────────────────────────────────

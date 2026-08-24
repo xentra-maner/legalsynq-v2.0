@@ -700,4 +700,335 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
         [JsonPropertyName("error")]
         public string? Error { get; set; }
     }
+
+    // ── LSV3-1083: Law-firm-scoped user management ──────────────────────────
+
+    public async Task<(LawFirmUserOperationOutcome Outcome, IReadOnlyList<LawFirmUserSummary>? Items, string? Error)> ListOrganizationUsersAsync(
+        Guid organizationId, CancellationToken ct = default)
+    {
+        if (!_isEnabled)
+            return (LawFirmUserOperationOutcome.ServiceUnavailable, null, "Identity service is not configured.");
+
+        try
+        {
+            using var client = BuildIdentityClient();
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+
+            using var response = await client.GetAsync($"api/internal/organizations/{organizationId}/users/", cts.Token);
+            if (!response.IsSuccessStatusCode)
+                return await FailureFromResponseAsync<IReadOnlyList<LawFirmUserSummary>>(response, cts.Token);
+
+            var result = await response.Content.ReadFromJsonAsync<OrgUserListResponse>(cancellationToken: cts.Token);
+            var items = (result?.Items ?? [])
+                .Select(i => new LawFirmUserSummary
+                {
+                    UserId = i.UserId,
+                    Email = i.Email,
+                    FirstName = i.FirstName,
+                    LastName = i.LastName,
+                    IsActive = i.IsActive,
+                    Status = i.Status ?? string.Empty,
+                    Roles = (i.Roles ?? [])
+                        .Select(r => new LawFirmUserRoleAssignmentInfo { AssignmentId = r.AssignmentId, RoleCode = r.RoleCode ?? string.Empty })
+                        .ToList(),
+                })
+                .ToList();
+
+            return (LawFirmUserOperationOutcome.Success, items, null);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("Law-firm user list timed out for organization {OrganizationId}.", organizationId);
+            return (LawFirmUserOperationOutcome.ServiceUnavailable, null, "Identity service timed out.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Law-firm user list failed for organization {OrganizationId}.", organizationId);
+            return (LawFirmUserOperationOutcome.ServiceUnavailable, null, "Identity service call failed.");
+        }
+    }
+
+    public async Task<(LawFirmUserOperationOutcome Outcome, LawFirmUserInviteResult? Result, string? Error)> InviteOrganizationUserAsync(
+        Guid organizationId, Guid tenantId, string email, string firstName, string lastName, string roleCode, CancellationToken ct = default)
+    {
+        if (!_isEnabled)
+            return (LawFirmUserOperationOutcome.ServiceUnavailable, null, "Identity service is not configured.");
+
+        try
+        {
+            using var client = BuildIdentityClient();
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+
+            using var response = await client.PostAsJsonAsync(
+                $"api/internal/organizations/{organizationId}/users/invite",
+                new { tenantId, email, firstName, lastName, roleCode },
+                cts.Token);
+
+            if (!response.IsSuccessStatusCode)
+                return await FailureFromResponseAsync<LawFirmUserInviteResult>(response, cts.Token);
+
+            var result = await response.Content.ReadFromJsonAsync<InviteOrgUserResponse>(cancellationToken: cts.Token);
+            if (result is null)
+                return (LawFirmUserOperationOutcome.ServiceUnavailable, null, "Identity service returned an empty response.");
+
+            return (LawFirmUserOperationOutcome.Success, new LawFirmUserInviteResult
+            {
+                UserId = result.UserId,
+                InvitationId = result.InvitationId,
+                Email = result.Email,
+                IsNew = result.IsNew,
+            }, null);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("Law-firm user invite timed out for organization {OrganizationId}.", organizationId);
+            return (LawFirmUserOperationOutcome.ServiceUnavailable, null, "Identity service timed out.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Law-firm user invite failed for organization {OrganizationId}.", organizationId);
+            return (LawFirmUserOperationOutcome.ServiceUnavailable, null, "Identity service call failed.");
+        }
+    }
+
+    public Task<(LawFirmUserOperationOutcome Outcome, string? Error)> ActivateOrganizationUserAsync(
+        Guid organizationId, Guid userId, CancellationToken ct = default) =>
+        SetOrganizationUserActiveStateAsync(organizationId, userId, activate: true, ct);
+
+    public Task<(LawFirmUserOperationOutcome Outcome, string? Error)> DeactivateOrganizationUserAsync(
+        Guid organizationId, Guid userId, CancellationToken ct = default) =>
+        SetOrganizationUserActiveStateAsync(organizationId, userId, activate: false, ct);
+
+    public async Task<(LawFirmUserOperationOutcome Outcome, string? Error)> ResendOrganizationUserInviteAsync(
+        Guid organizationId, Guid userId, CancellationToken ct = default)
+    {
+        if (!_isEnabled)
+            return (LawFirmUserOperationOutcome.ServiceUnavailable, "Identity service is not configured.");
+
+        try
+        {
+            using var client = BuildIdentityClient();
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+
+            using var response = await client.PostAsync(
+                $"api/internal/organizations/{organizationId}/users/{userId}/resend-invite", null, cts.Token);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var (outcome, _, error) = await FailureFromResponseAsync<object>(response, cts.Token);
+                return (outcome, error);
+            }
+
+            return (LawFirmUserOperationOutcome.Success, null);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("Law-firm user invite resend timed out for organization {OrganizationId}.", organizationId);
+            return (LawFirmUserOperationOutcome.ServiceUnavailable, "Identity service timed out.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Law-firm user invite resend failed for organization {OrganizationId}.", organizationId);
+            return (LawFirmUserOperationOutcome.ServiceUnavailable, "Identity service call failed.");
+        }
+    }
+
+    private async Task<(LawFirmUserOperationOutcome Outcome, string? Error)> SetOrganizationUserActiveStateAsync(
+        Guid organizationId, Guid userId, bool activate, CancellationToken ct)
+    {
+        if (!_isEnabled)
+            return (LawFirmUserOperationOutcome.ServiceUnavailable, "Identity service is not configured.");
+
+        try
+        {
+            using var client = BuildIdentityClient();
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+
+            var path = activate ? "activate" : "deactivate";
+            using var response = await client.PostAsync(
+                $"api/internal/organizations/{organizationId}/users/{userId}/{path}", null, cts.Token);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var (outcome, _, error) = await FailureFromResponseAsync<object>(response, cts.Token);
+                return (outcome, error);
+            }
+
+            return (LawFirmUserOperationOutcome.Success, null);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("Law-firm user {Action} timed out for organization {OrganizationId}.", activate ? "activate" : "deactivate", organizationId);
+            return (LawFirmUserOperationOutcome.ServiceUnavailable, "Identity service timed out.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Law-firm user {Action} failed for organization {OrganizationId}.", activate ? "activate" : "deactivate", organizationId);
+            return (LawFirmUserOperationOutcome.ServiceUnavailable, "Identity service call failed.");
+        }
+    }
+
+    public async Task<(LawFirmUserOperationOutcome Outcome, Guid? AssignmentId, string? Error)> AssignOrganizationUserRoleAsync(
+        Guid organizationId, Guid tenantId, Guid userId, string roleCode, CancellationToken ct = default)
+    {
+        if (!_isEnabled)
+            return (LawFirmUserOperationOutcome.ServiceUnavailable, null, "Identity service is not configured.");
+
+        try
+        {
+            using var client = BuildIdentityClient();
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+
+            using var response = await client.PostAsJsonAsync(
+                $"api/internal/organizations/{organizationId}/users/{userId}/product-roles",
+                new { tenantId, roleCode },
+                cts.Token);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var (outcome, _, error) = await FailureFromResponseAsync<object>(response, cts.Token);
+                return (outcome, null, error);
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<AssignRoleResponse>(cancellationToken: cts.Token);
+            return (LawFirmUserOperationOutcome.Success, result?.AssignmentId, null);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("Law-firm user role assignment timed out for organization {OrganizationId}.", organizationId);
+            return (LawFirmUserOperationOutcome.ServiceUnavailable, null, "Identity service timed out.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Law-firm user role assignment failed for organization {OrganizationId}.", organizationId);
+            return (LawFirmUserOperationOutcome.ServiceUnavailable, null, "Identity service call failed.");
+        }
+    }
+
+    public async Task<(LawFirmUserOperationOutcome Outcome, string? Error)> RevokeOrganizationUserRoleAsync(
+        Guid organizationId, Guid userId, Guid assignmentId, CancellationToken ct = default)
+    {
+        if (!_isEnabled)
+            return (LawFirmUserOperationOutcome.ServiceUnavailable, "Identity service is not configured.");
+
+        try
+        {
+            using var client = BuildIdentityClient();
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+
+            using var response = await client.DeleteAsync(
+                $"api/internal/organizations/{organizationId}/users/{userId}/product-roles/{assignmentId}", cts.Token);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var (outcome, _, error) = await FailureFromResponseAsync<object>(response, cts.Token);
+                return (outcome, error);
+            }
+
+            return (LawFirmUserOperationOutcome.Success, null);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("Law-firm user role revoke timed out for organization {OrganizationId}.", organizationId);
+            return (LawFirmUserOperationOutcome.ServiceUnavailable, "Identity service timed out.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Law-firm user role revoke failed for organization {OrganizationId}.", organizationId);
+            return (LawFirmUserOperationOutcome.ServiceUnavailable, "Identity service call failed.");
+        }
+    }
+
+    private static async Task<(LawFirmUserOperationOutcome Outcome, T? Value, string? Error)> FailureFromResponseAsync<T>(
+        HttpResponseMessage response, CancellationToken ct) where T : class
+    {
+        string? error = null;
+        try
+        {
+            var body = await response.Content.ReadFromJsonAsync<ErrorCodeResponse>(cancellationToken: ct);
+            error = body?.Error ?? body?.Code;
+        }
+        catch
+        {
+            // Non-JSON or empty error body — fall through with a generic message.
+        }
+
+        var outcome = response.StatusCode switch
+        {
+            System.Net.HttpStatusCode.NotFound => LawFirmUserOperationOutcome.NotFound,
+            System.Net.HttpStatusCode.Conflict => LawFirmUserOperationOutcome.Conflict,
+            System.Net.HttpStatusCode.BadRequest => LawFirmUserOperationOutcome.BadRequest,
+            System.Net.HttpStatusCode.Forbidden => LawFirmUserOperationOutcome.BadRequest,
+            System.Net.HttpStatusCode.UnprocessableEntity => LawFirmUserOperationOutcome.BadRequest,
+            _ => LawFirmUserOperationOutcome.ServiceUnavailable,
+        };
+
+        return (outcome, null, error ?? $"Identity service returned {(int)response.StatusCode}.");
+    }
+
+    private sealed class OrgUserListResponse
+    {
+        [JsonPropertyName("items")]
+        public List<OrgUserListItemDto>? Items { get; set; }
+    }
+
+    private sealed class OrgUserListItemDto
+    {
+        [JsonPropertyName("userId")]
+        public Guid UserId { get; set; }
+
+        [JsonPropertyName("email")]
+        public string Email { get; set; } = string.Empty;
+
+        [JsonPropertyName("firstName")]
+        public string FirstName { get; set; } = string.Empty;
+
+        [JsonPropertyName("lastName")]
+        public string LastName { get; set; } = string.Empty;
+
+        [JsonPropertyName("isActive")]
+        public bool IsActive { get; set; }
+
+        [JsonPropertyName("status")]
+        public string? Status { get; set; }
+
+        [JsonPropertyName("roles")]
+        public List<OrgUserRoleDto>? Roles { get; set; }
+    }
+
+    private sealed class OrgUserRoleDto
+    {
+        [JsonPropertyName("assignmentId")]
+        public Guid AssignmentId { get; set; }
+
+        [JsonPropertyName("roleCode")]
+        public string? RoleCode { get; set; }
+    }
+
+    private sealed class InviteOrgUserResponse
+    {
+        [JsonPropertyName("userId")]
+        public Guid UserId { get; set; }
+
+        [JsonPropertyName("invitationId")]
+        public Guid? InvitationId { get; set; }
+
+        [JsonPropertyName("email")]
+        public string Email { get; set; } = string.Empty;
+
+        [JsonPropertyName("isNew")]
+        public bool IsNew { get; set; }
+    }
+
+    private sealed class AssignRoleResponse
+    {
+        [JsonPropertyName("assignmentId")]
+        public Guid AssignmentId { get; set; }
+    }
 }

@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using BuildingBlocks.Authorization.Filters;
 using PermCodes = BuildingBlocks.Authorization.PermissionCodes;
+using ProductRoleCodes = BuildingBlocks.Authorization.ProductRoleCodes;
 using Identity.Api.Helpers;
 using Identity.Application.Interfaces;
 using Identity.Domain;
@@ -585,8 +586,9 @@ public static class AdminEndpoints
             tenantId:  tenant.Id);
         db.ScopedRoleAssignments.Add(sra);
 
-        // ── Mark tenant owner (the admin user just created) ───────────────────
+        // ── Mark tenant + org owner (the admin user just created) ─────────────
         tenant.SetOwner(user.Id);
+        org.SetOwner(user.Id);
 
         await db.SaveChangesAsync(ct);
 
@@ -4501,6 +4503,8 @@ public static class AdminEndpoints
                     displayName: string.IsNullOrWhiteSpace(body.OrganizationDisplayName)
                         ? orgName
                         : body.OrganizationDisplayName.Trim());
+                // The invited user is the founding member of this brand-new org.
+                org.SetOwner(user.Id);
                 db.Organizations.Add(org);
             }
 
@@ -8003,8 +8007,8 @@ public static partial class AdminEndpointsLscc010
 
         return effectiveOrgType?.ToUpperInvariant() switch
         {
-            OrgType.LawFirm => "CARECONNECT_REFERRER",
-            OrgType.Provider => "CARECONNECT_RECEIVER",
+            OrgType.LawFirm => ProductRoleCodes.CareConnectReferrerAdmin,
+            OrgType.Provider => ProductRoleCodes.CareConnectReceiver,
             _ => null,
         };
     }
@@ -8103,7 +8107,7 @@ public static partial class AdminEndpointsLscc010
         var org = await db.Organizations
             .AsNoTracking()
             .Where(o => o.Id == id)
-            .Select(o => new { o.Id, o.TenantId, o.Name, o.OrgType, o.ProviderMode, o.IsActive, o.CreatedAtUtc })
+            .Select(o => new { o.Id, o.TenantId, o.Name, o.OrgType, o.ProviderMode, o.IsActive, o.CreatedAtUtc, o.OwnerUserId })
             .FirstOrDefaultAsync(ct);
 
         return org is null ? Results.NotFound() : Results.Ok(org);

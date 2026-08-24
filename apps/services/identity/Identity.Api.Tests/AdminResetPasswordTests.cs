@@ -238,6 +238,10 @@ file sealed class NeverCalledEmailClient : INotificationsEmailClient
         string toEmail, string displayName, string activationLink, Guid tenantId, CancellationToken ct = default) =>
         throw new InvalidOperationException("SendInviteEmailAsync should not be called in this test.");
 
+    public Task<(bool EmailConfigured, bool Success, string? Error)> SendCareConnectLawFirmInviteEmailAsync(
+        string toEmail, string displayName, string activationLink, Guid tenantId, CancellationToken ct = default) =>
+        throw new InvalidOperationException("SendCareConnectLawFirmInviteEmailAsync should not be called in this test.");
+
     public Task<(bool EmailConfigured, bool Success, string? Error)> SendTenantRegistrationApprovedEmailAsync(
         string toEmail, string displayName, string tenantName, string activationLink, int expiryHours, Guid tenantId, CancellationToken ct = default) =>
         throw new InvalidOperationException("SendTenantRegistrationApprovedEmailAsync should not be called in this test.");
@@ -255,6 +259,10 @@ file sealed class StubEmailClient(bool emailConfigured, bool delivered, string? 
         Task.FromResult((emailConfigured, delivered, error));
 
     public Task<(bool EmailConfigured, bool Success, string? Error)> SendInviteEmailAsync(
+        string toEmail, string displayName, string activationLink, Guid tenantId, CancellationToken ct = default) =>
+        Task.FromResult((emailConfigured, delivered, error));
+
+    public Task<(bool EmailConfigured, bool Success, string? Error)> SendCareConnectLawFirmInviteEmailAsync(
         string toEmail, string displayName, string activationLink, Guid tenantId, CancellationToken ct = default) =>
         Task.FromResult((emailConfigured, delivered, error));
 

@@ -43,6 +43,9 @@ import type {
   ConvertPendingReferralRequest,
   UpdatePendingReferralRequest,
   TreatmentTypeOption,
+  LawFirmUserSummary,
+  InviteLawFirmUserRequest,
+  LawFirmUserInviteResult,
 } from '@/types/careconnect';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -349,6 +352,32 @@ export const careConnectApi = {
     /** GET /api/networks/{id}/providers/markers — map markers for the network */
     getMarkers: (id: string) =>
       apiClient.get<NetworkProviderMarker[]>(`/careconnect/api/networks/${id}/providers/markers`),
+  },
+
+  // LSV3-1083: Law Firm Company Super Admin/Manager — a CareConnectReferrerAdmin
+  // manages the users belonging to their own law firm. Always scoped to the
+  // caller's own organization server-side — there is no orgId parameter here.
+  lawFirmUsers: {
+    list: () =>
+      apiClient.get<LawFirmUserSummary[]>(`/careconnect/api/law-firm-users`),
+
+    invite: (request: InviteLawFirmUserRequest) =>
+      apiClient.post<LawFirmUserInviteResult>(`/careconnect/api/law-firm-users/invite`, request),
+
+    resendInvite: (userId: string) =>
+      apiClient.post<void>(`/careconnect/api/law-firm-users/${userId}/resend-invite`, {}),
+
+    activate: (userId: string) =>
+      apiClient.post<void>(`/careconnect/api/law-firm-users/${userId}/activate`, {}),
+
+    deactivate: (userId: string) =>
+      apiClient.post<void>(`/careconnect/api/law-firm-users/${userId}/deactivate`, {}),
+
+    assignRole: (userId: string, roleCode: string) =>
+      apiClient.post<{ assignmentId: string }>(`/careconnect/api/law-firm-users/${userId}/roles`, { roleCode }),
+
+    revokeRole: (userId: string, assignmentId: string) =>
+      apiClient.delete<void>(`/careconnect/api/law-firm-users/${userId}/roles/${assignmentId}`),
   },
 
   pendingReferralRequests: {

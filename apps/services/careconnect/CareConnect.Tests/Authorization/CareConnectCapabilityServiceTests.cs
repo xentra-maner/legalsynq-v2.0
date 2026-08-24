@@ -20,6 +20,14 @@ public class CareConnectPermissionServiceTests
     [InlineData(ProductRoleCodes.CareConnectReferrer, PermissionCodes.ReferralUpdateStatus,  false)]
     [InlineData(ProductRoleCodes.CareConnectReferrer, PermissionCodes.ScheduleManage,        false)]
     [InlineData(ProductRoleCodes.CareConnectReferrer, PermissionCodes.ProviderManage,        false)]
+    [InlineData(ProductRoleCodes.CareConnectReferrerAdmin, PermissionCodes.ReferralCreate,       true)]
+    [InlineData(ProductRoleCodes.CareConnectReferrerAdmin, PermissionCodes.ReferralReadOwn,      true)]
+    [InlineData(ProductRoleCodes.CareConnectReferrerAdmin, PermissionCodes.ProviderSearch,       true)]
+    [InlineData(ProductRoleCodes.CareConnectReferrerAdmin, PermissionCodes.ProviderManage,       true)]
+    [InlineData(ProductRoleCodes.CareConnectReferrerAdmin, PermissionCodes.ReferralAccept,       true)]
+    [InlineData(ProductRoleCodes.CareConnectReferrerAdmin, PermissionCodes.ReferralDecline,      true)]
+    [InlineData(ProductRoleCodes.CareConnectReferrerAdmin, PermissionCodes.ReferralUpdateStatus, true)]
+    [InlineData(ProductRoleCodes.CareConnectReferrerAdmin, PermissionCodes.ScheduleManage,       false)]
     [InlineData(ProductRoleCodes.CareConnectReceiver, PermissionCodes.ReferralAccept,        true)]
     [InlineData(ProductRoleCodes.CareConnectReceiver, PermissionCodes.ReferralDecline,       true)]
     [InlineData(ProductRoleCodes.CareConnectReceiver, PermissionCodes.ReferralUpdateStatus,  true)]
@@ -69,6 +77,10 @@ public class CareConnectPermissionServiceTests
     [InlineData("SYNQ_CARECONNECT:CARECONNECT_REFERRER", PermissionCodes.ReferralCancel,       true)]
     [InlineData("SYNQ_CARECONNECT:CARECONNECT_REFERRER", PermissionCodes.ReferralUpdateStatus, false)]
     [InlineData("SYNQ_CARECONNECT:CARECONNECT_REFERRER", PermissionCodes.ReferralAccept,       false)]
+    [InlineData("SYNQ_CARECONNECT:CARECONNECT_REFERRER_ADMIN", PermissionCodes.ReferralCreate, true)]
+    [InlineData("SYNQ_CARECONNECT:CARECONNECT_REFERRER_ADMIN", PermissionCodes.ReferralAccept, true)]
+    [InlineData("SYNQ_CARECONNECT:CARECONNECT_REFERRER_ADMIN", PermissionCodes.ReferralUpdateStatus, true)]
+    [InlineData("SYNQ_CARECONNECT:CARECONNECT_REFERRER_ADMIN", PermissionCodes.ProviderManage, true)]
     [InlineData("synq_careconnect:careconnect_receiver", PermissionCodes.ReferralAccept,       true)]  // case-insensitive
     public async Task HasPermissionAsync_PrefixedJwtRoleCode_StripsAndMatches(string jwtRoleCode, string permission, bool expected)
     {

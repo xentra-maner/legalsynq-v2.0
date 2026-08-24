@@ -61,14 +61,15 @@ CareConnect.Tests/         Tests
 | `GET` | `/api/public/referral-portal/pending-referrals/{id}` | Anonymous (`?code=`) | Referral Portal — read one pending request attributed to the access code |
 | `POST` | `/api/public/referral-portal/pending-referrals` | Anonymous (`?code=`) | Referral Portal — submit a pending referral request to a law firm |
 | `POST` | `/api/public/referral-portal/pending-referrals/{id}/attachments/upload` | Anonymous (`?code=`) | Referral Portal — upload a document attachment for a pending request |
-| `GET`/`PUT`/`POST` | `/api/pending-referral-requests` | CARECONNECT_REFERRER | Law firm review queue; update request values, decline requests, and convert accepted requests |
-| `POST` | `/api/pending-referral-requests/{id}/attachments/upload` | CARECONNECT_REFERRER | Law firm review queue — upload document attachments to a pending request before conversion |
-| `GET` | `/api/pending-referral-requests/{id}/attachments/{attachmentId}/url` | CARECONNECT_REFERRER | Law firm review queue — get a short-lived pending request attachment URL |
+| `GET`/`PUT`/`POST` | `/api/pending-referral-requests` | CARECONNECT_REFERRER or CARECONNECT_REFERRER_ADMIN | Law firm review queue; update request values, decline requests, and convert accepted requests |
+| `POST` | `/api/pending-referral-requests/{id}/attachments/upload` | CARECONNECT_REFERRER or CARECONNECT_REFERRER_ADMIN | Law firm review queue — upload document attachments to a pending request before conversion |
+| `GET` | `/api/pending-referral-requests/{id}/attachments/{attachmentId}/url` | CARECONNECT_REFERRER or CARECONNECT_REFERRER_ADMIN | Law firm review queue — get a short-lived pending request attachment URL |
 | `POST` | `/api/careconnect/appointments` | Bearer | Book appointment |
 | `GET` | `/api/public/careconnect/network` | Anonymous | Public provider network |
 | `PUT` | `/api/networks/{networkId}/providers/{providerId}` | Bearer | Edit a provider from a tenant network after membership validation |
 | `DELETE` | `/api/networks/{networkId}/providers/{id}` | Bearer | Soft-delete a provider-location network membership |
 | `POST` | `/api/networks/{networkId}/providers/import` | Anonymous, loopback-only | CSV/XLSX provider migration/import into a tenant network |
+| `GET`/`POST`/`DELETE` | `/api/law-firm-users[/invite\|/{userId}/resend-invite\|/{userId}/activate\|/{userId}/deactivate\|/{userId}/roles]` | CARECONNECT_REFERRER_ADMIN | Law Firm Company Admin (LSV3-1083) — list, invite/resend pending invites, activate/deactivate, and assign/revoke roles for a law firm's own users. Pending invitations are listed as `Invited`/`Invite sent` until accepted. No org-id route parameter: a caller always operates on their own organization only (TenantAdmin/PlatformAdmin can act on any org in the tenant). Proxies to Identity's internal `/api/internal/organizations/{organizationId}/users` endpoints, which independently re-verify org ownership. |
 
 ### Referral Attribution & Referral Portal
 
@@ -158,8 +159,8 @@ Portal's master provider list/map does not create a referral, does not notify an
 not bypass law-firm review. The portal persists ordered preferences in
 `cc_PendingReferralProviderPreferences`; the legacy `RecommendedProvider*` columns mirror the first
 preference for backward compatibility/default routing. Authenticated law-firm users with
-`CARECONNECT_REFERRER` list their own organization's pending requests, review all stored preferences,
-and convert one by selecting the final provider; conversion creates a normal referral, preserves
+`CARECONNECT_REFERRER` or `CARECONNECT_REFERRER_ADMIN` list their own organization's pending requests,
+review all stored preferences, and convert one by selecting the final provider; conversion creates a normal referral, preserves
 attribution/origin/lien-company fields, and blocks repeat conversion. If the law firm converts without
 selecting a different provider, the first stored preference can be used as the default conversion
 target.
@@ -378,7 +379,35 @@ Clients should open files only through signed URL endpoints:
 | `CARECONNECT_REFERRER` | Send referrals, find providers, book appointments |
 | `CARECONNECT_RECEIVER` | Receive referrals, manage appointments, manage availability |
 | `CARECONNECT_NETWORK_MANAGER` | Manage a tenant's own provider network (role-based, not orgType-based — assignable to Lien Owner and Law Firm orgs) |
-| `CARECONNECT_REFERRER_ADMIN` | Law-firm-scoped equivalent of `CARECONNECT_NETWORK_MANAGER` — same network/provider CRUD, but assignable to Law Firm orgs only (LSV3-1084) |
+| `CARECONNECT_REFERRER_ADMIN` | Law-firm-scoped admin role — can send/read/process the firm's referrals, manage network/provider directory data, and administer the firm's CareConnect users. Assignable to Law Firm orgs only. |
+
+Migrated Law Firm sessions whose JWT still contains `CARECONNECT_REFERRER` are accepted for
+referral status-processing actions until the user receives a refreshed token with
+`CARECONNECT_REFERRER_ADMIN`. This compatibility path is limited to `LAW_FIRM` org
+tokens and referral accept/decline/status-update permissions.
+
+Authenticated referral creation is enforced in the handler through `CareConnectAuthHelper`
+after product and organization product filters run. That keeps migrated law-firm users from
+being denied by stale JWT permission claims while still requiring a CareConnect product role
+that grants `referral:create`.
+
+### LSV3-1083: Law Firm Company Admin
+
+A `CARECONNECT_REFERRER_ADMIN` is the designated admin for their own Law
+Firm organization. At `/careconnect/law-firm-users` (web) they can view, invite,
+resend pending invitations, activate/deactivate, and assign/revoke CareConnect roles for the users belonging to
+their own firm — restricted to the `CARECONNECT_REFERRER` and `CARECONNECT_REFERRER_ADMIN`
+role codes only. Visibility and mutation are both scoped to the caller's own
+`OrganizationId`; a TenantAdmin/PlatformAdmin may act on any org in the tenant.
+
+Since CareConnect has no local user domain, `CareConnect.Api`'s `/api/law-firm-users/*`
+endpoints (`LawFirmUserEndpoints.cs`) enforce the org-ownership check and then proxy to
+new **internal, provisioning-token-secured** endpoints on Identity
+(`/api/internal/organizations/{organizationId}/users/*`, in
+`Identity.Api/Endpoints/LawFirmUserManagementEndpoints.cs`), which independently
+re-validates the role allow-list and re-derives org membership rather than trusting the
+caller's check. See `HttpIdentityOrganizationService`'s law-firm-user methods for the
+CareConnect → Identity call shape.
 
 ## Database
 

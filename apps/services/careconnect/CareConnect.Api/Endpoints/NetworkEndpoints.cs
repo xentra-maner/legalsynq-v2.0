@@ -24,6 +24,12 @@ namespace CareConnect.Api.Endpoints;
 // network self-management) product role, or PlatformAdmin / TenantAdmin bypass.
 public static class NetworkEndpoints
 {
+    private static readonly string[] LawFirmDirectoryRoles =
+    [
+        ProductRoleCodes.CareConnectReferrer,
+        ProductRoleCodes.CareConnectReferrerAdmin,
+    ];
+
     // BLK-SEC-06: HttpContext.Items key Program.cs stashes the raw physical TCP peer address
     // under, captured before UseForwardedHeaders can rewrite Connection.RemoteIpAddress from a
     // client-supplied X-Forwarded-For header. See the provider-import endpoint below.
@@ -292,7 +298,7 @@ public static class NetworkEndpoints
             var networks = await service.GetAllAsync(tenantId, ct, callerOrgId: ctx.OrgId);
             return Results.Ok(networks);
         })
-        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectReferrer);
+        .RequireProductRole(ProductCodes.SynqCareConnect, LawFirmDirectoryRoles);
 
         // Get network with full provider list
         dirGroup.MapGet("/{id:guid}", async (
@@ -305,7 +311,7 @@ public static class NetworkEndpoints
             var detail = await service.GetByIdAsync(tenantId, id, ct, callerOrgId: ctx.OrgId);
             return Results.Ok(detail);
         })
-        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectReferrer);
+        .RequireProductRole(ProductCodes.SynqCareConnect, LawFirmDirectoryRoles);
 
         // Get provider map markers for a specific network
         dirGroup.MapGet("/{id:guid}/markers", async (
@@ -318,7 +324,7 @@ public static class NetworkEndpoints
             var markers = await service.GetMarkersAsync(tenantId, id, ct, callerOrgId: ctx.OrgId);
             return Results.Ok(markers);
         })
-        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectReferrer);
+        .RequireProductRole(ProductCodes.SynqCareConnect, LawFirmDirectoryRoles);
 
         app.MapPost("/api/networks/{id:guid}/providers/import", async (
             Guid id,

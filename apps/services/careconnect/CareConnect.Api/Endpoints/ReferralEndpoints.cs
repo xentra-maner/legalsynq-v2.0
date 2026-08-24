@@ -329,8 +329,7 @@ public static class ReferralEndpoints
         })
         .RequireAuthorization(Policies.AuthenticatedUser)
         .RequireProductAccess(ProductCodes.SynqCareConnect)
-        .RequireOrgProductAccess(ProductCodes.SynqCareConnect)
-        .RequirePermission(PermissionCodes.ReferralCreate);
+        .RequireOrgProductAccess(ProductCodes.SynqCareConnect);
 
         group.MapPut("/{id:guid}", async (
             Guid id,

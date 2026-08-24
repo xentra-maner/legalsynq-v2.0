@@ -23,6 +23,21 @@ public sealed class CareConnectPermissionService : IPermissionService
                 PermissionCodes.AppointmentReadOwn,
                 PermissionCodes.DashboardRead,
             },
+            [ProductRoleCodes.CareConnectReferrerAdmin] = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                PermissionCodes.ReferralCreate,
+                PermissionCodes.ReferralReadOwn,
+                PermissionCodes.ReferralAccept,
+                PermissionCodes.ReferralDecline,
+                PermissionCodes.ReferralUpdateStatus,
+                PermissionCodes.ReferralCancel,
+                PermissionCodes.ProviderSearch,
+                PermissionCodes.ProviderMap,
+                PermissionCodes.ProviderManage,
+                PermissionCodes.AppointmentCreate,
+                PermissionCodes.AppointmentReadOwn,
+                PermissionCodes.DashboardRead,
+            },
             [ProductRoleCodes.CareConnectReceiver] = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
                 PermissionCodes.ReferralReadAddressed,

@@ -232,6 +232,11 @@ public class InviteDeliveryErrorTests
             CancellationToken ct = default)
             => Task.FromResult(_result);
 
+        public Task<(bool EmailConfigured, bool Success, string? Error)> SendCareConnectLawFirmInviteEmailAsync(
+            string toEmail, string displayName, string activationLink, Guid tenantId,
+            CancellationToken ct = default)
+            => Task.FromResult(_result);
+
         public Task<(bool EmailConfigured, bool Success, string? Error)> SendTenantRegistrationApprovedEmailAsync(
             string toEmail, string displayName, string tenantName, string activationLink, int expiryHours, Guid tenantId,
             CancellationToken ct = default)

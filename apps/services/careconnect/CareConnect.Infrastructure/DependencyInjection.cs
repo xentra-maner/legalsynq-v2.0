@@ -211,6 +211,9 @@ public static class DependencyInjection
         services.AddScoped<IProviderImportParser, CsvProviderImportParser>();
         services.AddScoped<INetworkService, NetworkService>();
 
+        // LSV3-1083: Law Firm Company Super Admin/Manager
+        services.AddScoped<ILawFirmUserService, LawFirmUserService>();
+
         return services;
     }
 }

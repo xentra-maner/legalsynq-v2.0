@@ -53,6 +53,7 @@ internal static class SeedIds
     public static readonly Guid PrXeniaUser               = new("50000000-0000-0000-0000-000000000009");
     public static readonly Guid PrXeniaAdmin              = new("50000000-0000-0000-0000-000000000010");
     public static readonly Guid PrCareConnectNetworkManager = new("50000000-0000-0000-0000-000000000011");
+    public static readonly Guid PrCareConnectReferrerAdmin = new("50000000-0000-0000-0000-000000000012");
 
     // ── Permissions — CareConnect ───────────────────────────────────────────
     public static readonly Guid PermReferralCreate        = new("60000000-0000-0000-0000-000000000001");

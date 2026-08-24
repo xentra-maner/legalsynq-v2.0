@@ -24,6 +24,7 @@ public static class CareConnectAuthHelper
         // LSCC-001: PlatformAdmin and TenantAdmin bypass all capability checks
         if (ctx.IsPlatformAdmin) return;
         if (ctx.Roles.Contains(Roles.TenantAdmin, StringComparer.OrdinalIgnoreCase)) return;
+        if (IsMigratedLawFirmReferrerSession(ctx, capabilityCode)) return;
 
         // LSCC-001: All other users must hold the specific capability for this operation
         if (!await authSvc.IsAuthorizedAsync(ctx, capabilityCode, ct))
@@ -45,9 +46,32 @@ public static class CareConnectAuthHelper
 
         foreach (var code in capabilityCodes)
         {
+            if (IsMigratedLawFirmReferrerSession(ctx, code))
+                return true;
+
             if (await authSvc.IsAuthorizedAsync(ctx, code, ct))
                 return true;
         }
         return false;
+    }
+
+    private static bool IsMigratedLawFirmReferrerSession(ICurrentRequestContext ctx, string capabilityCode)
+    {
+        if (capabilityCode is not (PermissionCodes.ReferralAccept
+            or PermissionCodes.ReferralDecline
+            or PermissionCodes.ReferralUpdateStatus))
+        {
+            return false;
+        }
+
+        if (!string.Equals(ctx.OrgType, "LAW_FIRM", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(ctx.OrgType, "LawFirm", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return ctx.ProductRoles.Any(role =>
+            string.Equals(role, ProductRoleCodes.CareConnectReferrer, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(role, $"{ProductCodes.SynqCareConnect}:{ProductRoleCodes.CareConnectReferrer}", StringComparison.OrdinalIgnoreCase));
     }
 }

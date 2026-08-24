@@ -60,6 +60,16 @@ public interface INotificationsEmailClient
         CancellationToken ct = default);
 
     /// <summary>
+    /// Dispatches a CareConnect law-firm user invitation email.
+    /// </summary>
+    Task<(bool EmailConfigured, bool Success, string? Error)> SendCareConnectLawFirmInviteEmailAsync(
+        string            toEmail,
+        string            displayName,
+        string            activationLink,
+        Guid              tenantId,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Dispatches the approval and administrator-account setup email created by
     /// the tenant self-registration review flow.
     /// </summary>
@@ -97,10 +107,12 @@ public sealed class NotificationsEmailClient : INotificationsEmailClient
 
     private const string PasswordResetEventKey        = "identity.user.password.reset";
     private const string InviteEventKey               = "identity.user.invite.sent";
+    private const string CareConnectLawFirmInviteEventKey = "identity.careconnect.law_firm.invite.sent";
     private const string TenantRegistrationApprovedEventKey = "identity.tenant.registration.approved";
     private const string TenantAccessGrantedEventKey  = "identity.user.tenant.access.granted";
     private const string PasswordResetSubject         = "Reset your LegalSynq password";
     private const string InviteSubject                = "You've been invited to LegalSynq";
+    private const string CareConnectLawFirmInviteSubject = "You've been invited to CareConnect";
     private const string TenantRegistrationApprovedSubject = "Your LegalSynq tenant application has been accepted";
     private const string TenantAccessGrantedSubject   = "You now have access to a new LegalSynq network";
 
@@ -181,6 +193,40 @@ public sealed class NotificationsEmailClient : INotificationsEmailClient
             body:         body,
             templateData: templateData,
             logTag:       "LS-NOTIF-CORE-024/invite",
+            ct:           ct);
+    }
+
+    public Task<(bool EmailConfigured, bool Success, string? Error)> SendCareConnectLawFirmInviteEmailAsync(
+        string            toEmail,
+        string            displayName,
+        string            activationLink,
+        Guid              tenantId,
+        CancellationToken ct = default)
+    {
+        var body = new
+        {
+            type    = CareConnectLawFirmInviteEventKey,
+            subject = CareConnectLawFirmInviteSubject,
+            html    = BuildCareConnectLawFirmInviteHtmlBody(displayName, activationLink),
+            body    = $"You've been invited to CareConnect\n\nHello {displayName},\n\nYour law firm administrator has invited you to LegalSynq CareConnect. Set your password to activate your account and start managing referrals. This link expires in 72 hours:\n{activationLink}\n\nIf you weren't expecting this invitation, you can safely ignore this email.",
+            attachments = LegalSynqEmailBranding.CreateInlineLogoAttachment(),
+        };
+
+        var templateData = new Dictionary<string, string>
+        {
+            ["displayName"]    = displayName,
+            ["activationLink"] = activationLink,
+            ["subject"]        = CareConnectLawFirmInviteSubject,
+        };
+
+        return SubmitAsync(
+            eventKey:     CareConnectLawFirmInviteEventKey,
+            subject:      CareConnectLawFirmInviteSubject,
+            toEmail:      toEmail,
+            tenantId:     tenantId,
+            body:         body,
+            templateData: templateData,
+            logTag:       "careconnect-law-firm-invite",
             ct:           ct);
     }
 
@@ -564,6 +610,61 @@ public sealed class NotificationsEmailClient : INotificationsEmailClient
                 <hr style="border:none;border-top:1px solid #f3f4f6;margin:0 0 20px;" />
                 <p style="margin:0;font-size:13px;line-height:1.5;color:#9ca3af;">
                   If you did not submit this tenant application, please contact LegalSynq support.
+                </p>
+
+              </td>
+            </tr>
+          </table>
+        </body>
+        </html>
+        """;
+    }
+
+    private static string BuildCareConnectLawFirmInviteHtmlBody(string name, string link)
+    {
+        var safeName = HtmlEncode(name);
+        var safeLink = HtmlEncode(link);
+
+        return $"""
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <title>You've been invited to CareConnect</title>
+        </head>
+        <body style="margin:0;padding:32px 16px;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;margin:0 auto;">
+            <tr>
+              <td style="background:#ffffff;border-radius:12px;padding:40px;border:1px solid #e5e7eb;">
+
+                <img src="{LegalSynqEmailBranding.LogoSource}" width="145" alt="LegalSynq" style="display:block;width:145px;height:auto;border:0;margin:0 auto 16px;" />
+                <hr style="border:none;border-top:1px solid #f3f4f6;margin:0 0 28px;" />
+
+                <h1 style="margin:0 0 12px;font-size:20px;line-height:1.4;font-weight:700;color:#111827;">You've been invited to CareConnect</h1>
+
+                <p style="margin:0 0 24px;font-size:15px;line-height:1.65;color:#374151;">
+                  Hello <strong>{safeName}</strong>,<br /><br />
+                  Your law firm administrator has invited you to <strong>LegalSynq CareConnect</strong>.
+                  Set your password to activate your account and start managing referrals. This secure
+                  link expires in&nbsp;72&nbsp;hours.
+                </p>
+
+                <table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
+                  <tr>
+                    <td style="border-radius:8px;background:#f97316;">
+                      <a href="{safeLink}"
+                         style="display:inline-block;padding:13px 28px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">
+                        Activate CareConnect account
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+
+                <hr style="border:none;border-top:1px solid #f3f4f6;margin:0 0 20px;" />
+                <p style="margin:0;font-size:13px;line-height:1.5;color:#9ca3af;">
+                  If you weren&rsquo;t expecting this invitation, you can safely ignore this email.
+                  No account will be activated unless you follow the link above.
                 </p>
 
               </td>

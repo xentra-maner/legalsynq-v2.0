@@ -53,6 +53,7 @@ Identity.Api.Tests/      Integration and unit tests
 | `POST` | `/api/admin/organizations/{id}/self-register` | Internal: CareConnect self-enrollment creates or links an active Identity user; accepts optional user `title` |
 | `POST` | `/api/admin/organizations/{id}/synqlien-buyer-self-register` | Internal: create a SynqLien buyer user and grant `SYNQ_LIENS:SYNQLIEN_BUYER`; returns `409 ACCOUNT_ALREADY_EXISTS` for existing emails |
 | `GET` | `/api/tenants/current/branding` | Anonymous branding by tenant code |
+| `GET`/`POST` | `/api/internal/organizations/{organizationId}/users[/invite\|/{userId}/resend-invite\|/{userId}/activate\|/{userId}/deactivate\|/{userId}/product-roles]` | Internal (provisioning token, not public JWT): list/invite/resend pending invite/activate/deactivate a law-firm organization's users and assign/revoke their `CARECONNECT_REFERRER`/`CARECONNECT_REFERRER_ADMIN` roles (LSV3-1083). Users with pending invitations are listed as `Invited` even though their account is not active yet. Called by CareConnect's `/api/law-firm-users` on behalf of a caller already verified to hold `CARECONNECT_REFERRER_ADMIN` for that org; every route re-derives org membership itself, treating the caller's own ownership check as advisory only. |
 
 ## Database
 
@@ -73,6 +74,12 @@ without tenant-wide user-management access.
 network/provider capabilities as `CARECONNECT_NETWORK_MANAGER`, but with `LAW_FIRM`-only organization
 eligibility (no `LIEN_OWNER` row), so a law firm's own admin can be granted network self-management
 without also becoming eligible for the lien-company-oriented role (LSV3-1084).
+`20260824120000_MigrateCareConnectLawFirmReferrerToAdmin` upgrades active law-firm
+`CARECONNECT_REFERRER` assignments to `CARECONNECT_REFERRER_ADMIN` and increments affected users'
+`AccessVersion` so stale JWT access claims are rejected/refreshed.
+`20260824124500_AddCareConnectReferrerAdminReferralCapabilities` backfills the admin role's
+direct referral create/read/cancel and appointment read permissions, then increments affected
+admin users' `AccessVersion` so refreshed JWT permission claims include the new capabilities.
 
 `20260728000001_SeedSynqLienSellWorkflowPermission` maps
 `SYNQ_LIENS.lien:sell` to `SYNQLIEN_SELLER`. This is the explicit Flow

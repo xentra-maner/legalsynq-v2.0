@@ -10,6 +10,12 @@ namespace CareConnect.Api.Endpoints;
 
 public static class PendingReferralRequestEndpoints
 {
+    private static readonly string[] LawFirmReviewerRoles =
+    [
+        ProductRoleCodes.CareConnectReferrer,
+        ProductRoleCodes.CareConnectReferrerAdmin,
+    ];
+
     public static void MapPendingReferralRequestEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/pending-referral-requests")
@@ -35,7 +41,7 @@ public static class PendingReferralRequestEndpoints
                 ct);
             return Results.Ok(result);
         })
-        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectReferrer);
+        .RequireProductRole(ProductCodes.SynqCareConnect, LawFirmReviewerRoles);
 
         group.MapGet("/{id:guid}", async (
             Guid id,
@@ -48,7 +54,7 @@ public static class PendingReferralRequestEndpoints
             var result = await service.GetForLawFirmAsync(tenantId, orgId, id, ct);
             return result is null ? Results.NotFound() : Results.Ok(result);
         })
-        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectReferrer);
+        .RequireProductRole(ProductCodes.SynqCareConnect, LawFirmReviewerRoles);
 
         group.MapPut("/{id:guid}", async (
             Guid id,
@@ -62,7 +68,7 @@ public static class PendingReferralRequestEndpoints
             var result = await service.UpdateForLawFirmAsync(tenantId, orgId, id, ctx.UserId, request, ct);
             return Results.Ok(result);
         })
-        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectReferrer);
+        .RequireProductRole(ProductCodes.SynqCareConnect, LawFirmReviewerRoles);
 
         group.MapPost("/{id:guid}/decline", async (
             Guid id,
@@ -75,7 +81,7 @@ public static class PendingReferralRequestEndpoints
             var result = await service.CancelForLawFirmAsync(tenantId, orgId, id, ctx.UserId, ct);
             return Results.Ok(result);
         })
-        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectReferrer);
+        .RequireProductRole(ProductCodes.SynqCareConnect, LawFirmReviewerRoles);
 
         group.MapPost("/{id:guid}/convert", async (
             Guid id,
@@ -89,7 +95,7 @@ public static class PendingReferralRequestEndpoints
             var result = await service.ConvertAsync(tenantId, orgId, id, ctx.UserId, request, ct);
             return Results.Ok(result);
         })
-        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectReferrer);
+        .RequireProductRole(ProductCodes.SynqCareConnect, LawFirmReviewerRoles);
 
         group.MapPost("/{id:guid}/attachments/upload", async (
             Guid id,
@@ -147,7 +153,7 @@ public static class PendingReferralRequestEndpoints
             }
         })
         .DisableAntiforgery()
-        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectReferrer);
+        .RequireProductRole(ProductCodes.SynqCareConnect, LawFirmReviewerRoles);
 
         group.MapGet("/{id:guid}/attachments/{attachmentId:guid}/url", async (
             Guid id,
@@ -180,6 +186,6 @@ public static class PendingReferralRequestEndpoints
                 ? Results.Problem("The document is not currently accessible.", statusCode: StatusCodes.Status503ServiceUnavailable)
                 : Results.Ok(result);
         })
-        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectReferrer);
+        .RequireProductRole(ProductCodes.SynqCareConnect, LawFirmReviewerRoles);
     }
 }

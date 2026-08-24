@@ -605,9 +605,7 @@ public class AuthService : IAuthService
         var rawUserProductCodes = principal.FindAll("product_codes")
             .Select(c => c.Value)
             .ToList();
-        var userProducts = rawUserProductCodes
-            .Select(code => DbToFrontendProductCode.TryGetValue(code, out var fc) ? fc : code)
-            .ToList();
+        List<string> userProducts = [];
 
         // Derive expiry from the "exp" claim (Unix epoch seconds)
         var expClaim    = principal.FindFirstValue("exp");
@@ -705,6 +703,14 @@ public class AuthService : IAuthService
 
             if (refreshUser is not null && refreshTenant is not null)
             {
+                var effectiveAccess = await _effectiveAccessService.GetEffectiveAccessAsync(
+                    refreshTenant.Id,
+                    refreshUser.Id,
+                    ct);
+                productRoles = effectiveAccess.ProductRolesFlat;
+                rawUserProductCodes = effectiveAccess.Products;
+                permissions = effectiveAccess.Permissions;
+
                 var tenantMemberships = await _userRepository.GetActiveTenantMembershipsAsync(refreshUser.Id, ct);
                 var rawTenantIds = principal.FindAll("tenant_ids")
                     .Select(claim => Guid.TryParse(claim.Value, out var parsedTenantId) ? parsedTenantId : (Guid?)null)
@@ -730,6 +736,10 @@ public class AuthService : IAuthService
                 expiresAtUtc = renewedExpiresAtUtc;
             }
         }
+
+        userProducts = rawUserProductCodes
+            .Select(code => DbToFrontendProductCode.TryGetValue(code, out var fc) ? fc : code)
+            .ToList();
 
         return new AuthMeResponse(
             UserId:                 userId,

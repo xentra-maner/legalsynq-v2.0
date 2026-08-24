@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using BuildingBlocks.Authorization;
+using ProductCodes = BuildingBlocks.Authorization.ProductCodes;
 using Identity.Application.Interfaces;
 using Identity.Domain;
 using Identity.Infrastructure.Data;
@@ -219,6 +221,20 @@ public class EffectiveAccessService : IEffectiveAccessService
         {
             activeGroups.TryGetValue(r.GroupId, out var gn);
             AddRole(r.RoleCode, r.ProductCode, "Inherited", r.GroupId, gn);
+        }
+
+        // LSV3-1083: a CareConnectReferrerAdmin (law-firm Super Admin/Manager) can do
+        // everything a plain CareConnectReferrer can — submit referrals, browse networks,
+        // etc. — in addition to their own firm-management capabilities. Rather than
+        // dual-assigning both roles at every grant path (invite, tenant-admin role
+        // assignment UI, seed data), imply it once here so every existing Referrer-gated
+        // check (backend RequireProductRole, frontend nav requiredRoles) already sees it.
+        if (productRoles.TryGetValue(ProductCodes.SynqCareConnect, out var careConnectRoles)
+            && careConnectRoles.Contains(ProductRoleCodes.CareConnectReferrerAdmin, StringComparer.OrdinalIgnoreCase)
+            && !careConnectRoles.Contains(ProductRoleCodes.CareConnectReferrer, StringComparer.OrdinalIgnoreCase))
+        {
+            careConnectRoles.Add(ProductRoleCodes.CareConnectReferrer);
+            roleSources.Add(new EffectiveRoleEntry(ProductRoleCodes.CareConnectReferrer, ProductCodes.SynqCareConnect, "Implied", null, null));
         }
 
         var productRolesFlat = new List<string>();

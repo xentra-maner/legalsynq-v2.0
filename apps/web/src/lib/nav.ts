@@ -68,6 +68,17 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
           requiredRoles: [ProductRole.CareConnectReferrerAdmin],
           hiddenForOrgTypes: [OrgType.LienOwner],
         },
+        // LSV3-1083: Law Firm Company Super Admin/Manager — lets a
+        // CareConnectReferrerAdmin view and manage the users belonging to their
+        // own law firm (invite, activate/deactivate, assign/revoke CareConnect
+        // roles). Law-firm-only, mirrors the "Network Setup" entry above.
+        {
+          href: "/careconnect/law-firm-users",
+          label: "Firm Users",
+          icon: "ri-team-line",
+          requiredRoles: [ProductRole.CareConnectReferrerAdmin],
+          hiddenForOrgTypes: [OrgType.LienOwner],
+        },
         // Referral Attribution configuration — tenant admin only. Tenant-portal
         // configuration, not part of the restricted single-product CareConnect
         // common portal (careconnect-demo.* / PORTAL_CARECONNECT_SUBDOMAIN).

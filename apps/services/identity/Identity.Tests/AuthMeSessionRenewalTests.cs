@@ -117,4 +117,5 @@ public class AuthMeSessionRenewalTests
         await db.SaveChangesAsync();
         return (tenant.Id, tenant.Code, email, password);
     }
+
 }

@@ -51,6 +51,43 @@ public sealed class TenantRegistrationApprovedEmailTests
         Assert.DoesNotContain("An administrator has invited you", html);
     }
 
+    [Fact]
+    public async Task CareConnect_law_firm_invite_uses_dedicated_copy_and_centered_logo()
+    {
+        var handler = new CaptureHandler();
+        var client = new NotificationsEmailClient(
+            new TestHttpClientFactory(handler),
+            Options.Create(new NotificationsServiceOptions { BaseUrl = "https://notifications.example.test" }),
+            NullLogger<NotificationsEmailClient>.Instance);
+
+        var result = await client.SendCareConnectLawFirmInviteEmailAsync(
+            "john@example.test",
+            "John Doe",
+            "https://firm.example.test/accept-invite?token=secret",
+            Guid.Parse("10000000-0000-0000-0000-000000000001"));
+
+        Assert.True(result.Success);
+        using var payload = JsonDocument.Parse(handler.Body!);
+        var root = payload.RootElement;
+        Assert.Equal("identity.careconnect.law_firm.invite.sent", root.GetProperty("eventKey").GetString());
+        Assert.Equal("You've been invited to CareConnect", root.GetProperty("subject").GetString());
+
+        var message = root.GetProperty("message");
+        var html = message.GetProperty("html").GetString()!;
+        Assert.Contains("You've been invited to CareConnect", html);
+        Assert.Contains("LegalSynq CareConnect", html);
+        Assert.Contains("Activate CareConnect account", html);
+        Assert.Contains("src=\"cid:legalsynq-logo\"", html);
+        Assert.Contains("margin:0 auto 16px", html);
+        Assert.DoesNotContain("Or copy and paste this link", html);
+        Assert.DoesNotContain("An administrator has invited you", html);
+        var attachment = Assert.Single(message.GetProperty("attachments").EnumerateArray());
+        Assert.Equal("legalsynq-logo", attachment.GetProperty("contentId").GetString());
+        Assert.Equal("inline", attachment.GetProperty("disposition").GetString());
+        Assert.Equal("image/png", attachment.GetProperty("type").GetString());
+        Assert.NotEmpty(attachment.GetProperty("content").GetString()!);
+    }
+
     private sealed class TestHttpClientFactory(HttpMessageHandler handler) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);

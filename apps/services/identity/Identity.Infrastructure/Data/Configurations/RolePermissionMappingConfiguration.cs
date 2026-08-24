@@ -28,6 +28,7 @@ public class RolePermissionMappingConfiguration : IEntityTypeConfiguration<RoleP
 
         var referrer  = SeedIds.PrCareConnectReferrer;
         var receiver  = SeedIds.PrCareConnectReceiver;
+        var referrerAdmin = SeedIds.PrCareConnectReferrerAdmin;
         var networkManager = SeedIds.PrCareConnectNetworkManager;
         var seller    = SeedIds.PrSynqLienSeller;
         var buyer     = SeedIds.PrSynqLienBuyer;
@@ -45,6 +46,14 @@ public class RolePermissionMappingConfiguration : IEntityTypeConfiguration<RoleP
             new { ProductRoleId = referrer, PermissionId = SeedIds.PermProviderSearch },
             new { ProductRoleId = referrer, PermissionId = SeedIds.PermProviderMap },
             new { ProductRoleId = referrer, PermissionId = SeedIds.PermAppointmentReadOwn },
+
+            new { ProductRoleId = referrerAdmin, PermissionId = SeedIds.PermReferralCreate },
+            new { ProductRoleId = referrerAdmin, PermissionId = SeedIds.PermReferralReadOwn },
+            new { ProductRoleId = referrerAdmin, PermissionId = SeedIds.PermReferralCancel },
+            new { ProductRoleId = referrerAdmin, PermissionId = SeedIds.PermProviderSearch },
+            new { ProductRoleId = referrerAdmin, PermissionId = SeedIds.PermProviderMap },
+            new { ProductRoleId = referrerAdmin, PermissionId = SeedIds.PermProviderManage },
+            new { ProductRoleId = referrerAdmin, PermissionId = SeedIds.PermAppointmentReadOwn },
 
             new { ProductRoleId = networkManager, PermissionId = SeedIds.PermProviderSearch },
             new { ProductRoleId = networkManager, PermissionId = SeedIds.PermProviderMap },

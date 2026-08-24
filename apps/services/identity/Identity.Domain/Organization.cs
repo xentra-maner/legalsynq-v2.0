@@ -19,6 +19,9 @@ public class Organization
     public Guid? CreatedByUserId { get; private set; }
     public Guid? UpdatedByUserId { get; private set; }
 
+    /// <summary>LSV3-1083: the designated owner of this organization (mirrors <see cref="Tenant.OwnerUserId"/>).</summary>
+    public Guid? OwnerUserId { get; private set; }
+
     public Tenant? Tenant { get; private set; }
     public OrganizationType? OrganizationTypeRef { get; private set; }
     public ICollection<OrganizationDomain> Domains { get; private set; } = [];
@@ -165,6 +168,14 @@ public class Organization
     {
         IsActive = false;
         UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void SetOwner(Guid ownerUserId)
+    {
+        if (ownerUserId == Guid.Empty)
+            throw new ArgumentException("ownerUserId must not be empty.", nameof(ownerUserId));
+        OwnerUserId  = ownerUserId;
         UpdatedAtUtc = DateTime.UtcNow;
     }
 }

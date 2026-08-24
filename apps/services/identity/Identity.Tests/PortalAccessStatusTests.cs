@@ -430,7 +430,7 @@ public class PortalAccessStatusTests
             a.UserId == existingUserId
             && a.TenantId == targetTenantId
             && a.ProductCode == CareConnectProductCode
-            && a.RoleCode == "CARECONNECT_REFERRER"
+            && a.RoleCode == "CARECONNECT_REFERRER_ADMIN"
             && a.AssignmentStatus == AssignmentStatus.Active));
         Assert.Equal("+15551234567", await verifyDb.Users
             .Where(u => u.Id == existingUserId)
@@ -506,7 +506,7 @@ public class PortalAccessStatusTests
             a.UserId == body.UserId
             && a.TenantId == targetTenantId
             && a.ProductCode == CareConnectProductCode
-            && a.RoleCode == "CARECONNECT_REFERRER"
+            && a.RoleCode == "CARECONNECT_REFERRER_ADMIN"
             && a.AssignmentStatus == AssignmentStatus.Active));
         Assert.Equal("+15559876543", await verifyDb.Users
             .Where(u => u.Id == body.UserId)

@@ -1131,3 +1131,35 @@ export interface UpdateNetworkRequest {
   name:        string;
   description: string;
 }
+
+// ── LSV3-1083: Law Firm Company Super Admin/Manager ──────────────────────────
+
+export interface LawFirmUserRoleAssignment {
+  assignmentId: string;
+  roleCode:     string;
+}
+
+export interface LawFirmUserSummary {
+  userId:    string;
+  email:     string;
+  firstName: string;
+  lastName:  string;
+  isActive:  boolean;
+  status:    string;
+  roles:     LawFirmUserRoleAssignment[];
+}
+
+export interface InviteLawFirmUserRequest {
+  email:     string;
+  firstName: string;
+  lastName:  string;
+  /** Defaults to CARECONNECT_REFERRER when omitted. */
+  roleCode?: string;
+}
+
+export interface LawFirmUserInviteResult {
+  userId:       string;
+  invitationId?: string | null;
+  email:        string;
+  isNew:        boolean;
+}

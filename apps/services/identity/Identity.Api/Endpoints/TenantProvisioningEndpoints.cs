@@ -143,6 +143,7 @@ public static class TenantProvisioningEndpoints
             db.Users.Add(user);
             db.UserTenants.Add(UserTenant.Create(user.Id, identityTenant.Id));
             identityTenant.SetOwner(user.Id);
+            org.SetOwner(user.Id);
 
             var membership = UserOrganizationMembership.Create(
                 userId:         user.Id,

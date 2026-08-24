@@ -404,6 +404,7 @@ app.MapAppointmentNoteEndpoints();
 app.MapAttachmentEndpoints();
 app.MapNotificationEndpoints();
 app.MapNetworkEndpoints();             // CC2-INT-B06: provider network management
+app.MapLawFirmUserEndpoints();         // LSV3-1083: law firm company super admin/manager
 app.MapPublicNetworkEndpoints();       // CC2-INT-B07: public network surface (anonymous)
 app.MapEnrollmentEndpoints();          // CC2-ENROLL: provider self-enrollment (anonymous)
 app.MapReferralThreadEndpoints();      // Public referral comment thread (token-authenticated)

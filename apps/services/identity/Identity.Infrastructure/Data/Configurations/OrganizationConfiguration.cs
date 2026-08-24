@@ -38,11 +38,13 @@ public class OrganizationConfiguration : IEntityTypeConfiguration<Organization>
         builder.Property(o => o.UpdatedAtUtc).IsRequired();
         builder.Property(o => o.CreatedByUserId);
         builder.Property(o => o.UpdatedByUserId);
+        builder.Property(o => o.OwnerUserId);
 
         builder.HasIndex(o => new { o.TenantId, o.Name }).IsUnique();
         builder.HasIndex(o => new { o.OrgType, o.Name });
         builder.HasIndex(o => new { o.TenantId, o.OrgType });
         builder.HasIndex(o => o.OrganizationTypeId);
+        builder.HasIndex(o => o.OwnerUserId);
 
         builder.HasOne(o => o.Tenant)
             .WithMany(t => t.Organizations)
@@ -69,7 +71,8 @@ public class OrganizationConfiguration : IEntityTypeConfiguration<Organization>
             CreatedAtUtc = SeedIds.SeededAt,
             UpdatedAtUtc = SeedIds.SeededAt,
             CreatedByUserId = (Guid?)null,
-            UpdatedByUserId = (Guid?)null
+            UpdatedByUserId = (Guid?)null,
+            OwnerUserId = (Guid?)null
         });
     }
 }

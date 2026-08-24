@@ -114,7 +114,7 @@ public static class ProviderEndpoints
         })
         .RequireAuthorization(Policies.AuthenticatedUser)
         .RequireProductRole(ProductCodes.SynqCareConnect,
-            ProductRoleCodes.CareConnectReceiver, "CARECONNECT_ADMIN");
+            ProductRoleCodes.CareConnectReceiver, ProductRoleCodes.CareConnectReferrerAdmin, "CARECONNECT_ADMIN");
 
         group.MapPut("/{id:guid}", async (
             Guid id,
@@ -131,7 +131,7 @@ public static class ProviderEndpoints
         })
         .RequireAuthorization(Policies.AuthenticatedUser)
         .RequireProductRole(ProductCodes.SynqCareConnect,
-            ProductRoleCodes.CareConnectReceiver, "CARECONNECT_ADMIN");
+            ProductRoleCodes.CareConnectReceiver, ProductRoleCodes.CareConnectReferrerAdmin, "CARECONNECT_ADMIN");
 
         // ── Availability endpoint ──────────────────────────────────────────
         group.MapGet("/{providerId:guid}/availability", async (

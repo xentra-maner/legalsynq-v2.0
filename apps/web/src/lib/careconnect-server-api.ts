@@ -29,6 +29,7 @@ import type {
   NetworkProviderMarker,
   NetworkReferralPage,
   SpecialtyOption,
+  LawFirmUserSummary,
 } from '@/types/careconnect';
 import type { OrgTypeValue } from '@/types';
 
@@ -247,6 +248,13 @@ export const careConnectServerApi = {
     /** GET /api/networks/directory/{id}/markers — map markers for network providers */
     getMarkers: (id: string) =>
       serverApi.get<NetworkProviderMarker[]>(`/careconnect/api/networks/directory/${id}/markers`),
+  },
+
+  // LSV3-1083: Law Firm Company Super Admin/Manager — server-side initial fetch
+  // for the /careconnect/law-firm-users page.
+  lawFirmUsers: {
+    list: () =>
+      serverApi.get<LawFirmUserSummary[]>(`/careconnect/api/law-firm-users`),
   },
 
   // Network Referral Monitor — lien company / network manager view of all referrals

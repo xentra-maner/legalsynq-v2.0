@@ -6,7 +6,7 @@ public interface IReferralAttributionAccessCodeService
 {
     Task<List<ReferralAttributionAccessCodeResponse>> ListAsync(Guid tenantId, CancellationToken ct = default);
 
-    /// <summary>The single active code for this attribution, or null if none exists.</summary>
+    /// <summary>The single active code for this origination, or null if none exists.</summary>
     Task<ReferralAttributionAccessCodeResponse?> GetActiveByAttributionAsync(Guid tenantId, Guid referralAttributionId, CancellationToken ct = default);
 
     Task<GeneratedReferralAttributionAccessCodeResponse> GenerateAsync(

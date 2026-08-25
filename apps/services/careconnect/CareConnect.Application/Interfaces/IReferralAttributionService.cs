@@ -11,8 +11,8 @@ public interface IReferralAttributionService
     Task<ReferralAttributionResponse> SetActiveAsync(Guid tenantId, Guid id, Guid? actorUserId, string? actorName, bool isActive, CancellationToken ct = default);
 
     /// <summary>
-    /// Idempotent seed used for the initial Cam-Perry-style attribution (or any future
-    /// pre-configured attribution). Check-then-create on (TenantId, Code) — safe to call
+    /// Idempotent seed used for the initial Cam-Perry-style origination (or any future
+    /// pre-configured origination). Check-then-create on (TenantId, Code) — safe to call
     /// on every startup.
     /// </summary>
     Task SeedAsync(Guid tenantId, CreateReferralAttributionRequest request, CancellationToken ct = default);

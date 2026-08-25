@@ -333,6 +333,12 @@ function ViewField({ label, value }: { label: string; value: string }) {
   );
 }
 
+function referralOriginationName(request: PendingReferralRequest): string {
+  const firstName = request.referralAttribution?.firstName?.trim() ?? "";
+  const lastName = request.referralAttribution?.lastName?.trim() ?? "";
+  return [firstName, lastName].filter(Boolean).join(" ");
+}
+
 const ATTACHMENT_ACCEPT = [
   "application/pdf",
   "application/msword",
@@ -861,6 +867,7 @@ export default function PendingReferralRequestDetailPage() {
                     label="Type of treatment"
                     value={form.treatmentTypeId ? treatmentTypes.find(type => type.id === form.treatmentTypeId)?.name ?? "" : "None"}
                   />
+                  <ViewField label="Referral Origination" value={referralOriginationName(request)} />
                   <ViewField label="Lien company name" value={form.lienCompanyName ?? ""} />
                   <ViewField label="Lien company email" value={form.lienCompanyEmail ?? ""} />
                   <div className="sm:col-span-2 lg:col-span-3">

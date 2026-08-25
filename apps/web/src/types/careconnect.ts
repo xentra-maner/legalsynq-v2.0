@@ -198,11 +198,11 @@ export interface ReferralSummary {
   // Type of Treatment — set by Referrer at creation.
   treatmentTypeId?:   string;
   treatmentTypeName?: string;
-  // Referral Attribution — who or what originated this referral. Undefined/null = not set.
+  // Referral Origination — who or what originated this referral. Undefined/null = not set.
   referralAttribution?: ReferralAttributionSummary | null;
 }
 
-// ── Referral Attribution ─────────────────────────────────────────────────────
+// ── Referral Origination ─────────────────────────────────────────────────────
 
 export interface ReferralAttributionSummary {
   id:          string;
@@ -244,7 +244,7 @@ export interface UpdateReferralAttributionRequest {
 
 // ── Referral Representative access codes ──────────────────────────────────────
 // Replaces the earlier admin-typed user-linking model: an admin generates a code
-// scoped to one attribution and shares it out of band. There is no login and no
+// scoped to one origination and shares it out of band. There is no login and no
 // "redeemer" — the Representative Portal is fully anonymous and re-checks the raw
 // code on every request (see representative-portal-api.ts). No admin screen ever
 // picks or types a specific user account.

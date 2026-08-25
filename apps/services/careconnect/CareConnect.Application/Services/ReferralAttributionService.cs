@@ -55,7 +55,7 @@ public class ReferralAttributionService : IReferralAttributionService
         var existing = await _attributions.GetByCodeAsync(tenantId, normalizedCode, ct);
         if (existing is not null)
             throw new ValidationException("One or more validation errors occurred.",
-                new() { ["code"] = [$"An attribution with code '{normalizedCode}' already exists for this tenant."] });
+                new() { ["code"] = [$"An origination with code '{normalizedCode}' already exists for this tenant."] });
 
         var attribution = ReferralAttribution.Create(
             tenantId, request.FirstName, request.LastName, normalizedCode, request.Description,
@@ -65,7 +65,7 @@ public class ReferralAttributionService : IReferralAttributionService
 
         EmitAudit("careconnect.referral_attribution.created", "ReferralAttributionCreated",
             attribution.TenantId, attribution.Id, actorUserId, actorName,
-            $"Referral Attribution '{attribution.FullName}' ({attribution.Code}) created.",
+            $"Referral Origination '{attribution.FullName}' ({attribution.Code}) created.",
             previousValue: null, newValue: ToAuditSnapshot(attribution));
 
         return await ToResponseAsync(attribution, ct);
@@ -89,7 +89,7 @@ public class ReferralAttributionService : IReferralAttributionService
 
         EmitAudit("careconnect.referral_attribution.edited", "ReferralAttributionEdited",
             record.TenantId, record.Id, actorUserId, actorName,
-            $"Referral Attribution '{record.FullName}' ({record.Code}) edited.",
+            $"Referral Origination '{record.FullName}' ({record.Code}) edited.",
             previousValue: previous, newValue: ToAuditSnapshot(record));
 
         return await ToResponseAsync(record, ct);
@@ -107,7 +107,7 @@ public class ReferralAttributionService : IReferralAttributionService
             isActive ? "careconnect.referral_attribution.activated" : "careconnect.referral_attribution.deactivated",
             isActive ? "ReferralAttributionActivated" : "ReferralAttributionDeactivated",
             record.TenantId, record.Id, actorUserId, actorName,
-            $"Referral Attribution '{record.FullName}' ({record.Code}) {(isActive ? "activated" : "deactivated")}.",
+            $"Referral Origination '{record.FullName}' ({record.Code}) {(isActive ? "activated" : "deactivated")}.",
             previousValue: previous, newValue: ToAuditSnapshot(record));
 
         return await ToResponseAsync(record, ct);
@@ -128,7 +128,7 @@ public class ReferralAttributionService : IReferralAttributionService
 
         EmitAudit("careconnect.referral_attribution.created", "ReferralAttributionSeeded",
             attribution.TenantId, attribution.Id, actorUserId: null, actorName: "(seed)",
-            $"Referral Attribution '{attribution.FullName}' ({attribution.Code}) seeded.",
+            $"Referral Origination '{attribution.FullName}' ({attribution.Code}) seeded.",
             previousValue: null, newValue: ToAuditSnapshot(attribution));
     }
 
@@ -138,7 +138,7 @@ public class ReferralAttributionService : IReferralAttributionService
     {
         var record = await _attributions.GetByIdAsync(tenantId, id, ct);
         if (record is null)
-            throw new NotFoundException($"Referral Attribution '{id}' was not found.");
+            throw new NotFoundException($"Referral Origination '{id}' was not found.");
         return record;
     }
 

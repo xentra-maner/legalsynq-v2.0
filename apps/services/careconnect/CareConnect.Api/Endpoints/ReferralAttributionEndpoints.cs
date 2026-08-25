@@ -9,8 +9,8 @@ using Microsoft.AspNetCore.Mvc;
 namespace CareConnect.Api.Endpoints;
 
 /// <summary>
-/// Tenant administration of Referral Attribution options.
-/// Suggested UI location: Tenant Portal → Settings → Referral Configuration → Referral Attributions,
+/// Tenant administration of Referral Origination options.
+/// Suggested UI location: Tenant Portal → Settings → Referral Configuration → Referral Originations,
 /// but the CareConnect-domain config lives in the CareConnect admin surface (like providers,
 /// categories, specialties) — reachable from the Tenant Portal but not a Tenant-service concept.
 /// </summary>

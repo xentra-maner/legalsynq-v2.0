@@ -60,7 +60,7 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
   const [notes,            setNotes]            = useState('');
   const [lienCompanyName,  setLienCompanyName]  = useState('');
   const [lienCompanyEmail, setLienCompanyEmail] = useState('');
-  // Referral Attribution — optional, defaults to blank. Never auto-selected.
+  // Referral Origination — optional, defaults to blank. Never auto-selected.
   const [referralAttributionId, setReferralAttributionId] = useState('');
 
   const [treatmentTypes,   setTreatmentTypes]   = useState<TreatmentType[]>([]);
@@ -367,7 +367,7 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Referral Attribution</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Referral Origination</label>
                   <select
                     value={referralAttributionId}
                     onChange={e => setReferralAttributionId(e.target.value)}

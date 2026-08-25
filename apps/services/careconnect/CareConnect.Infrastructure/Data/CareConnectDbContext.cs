@@ -48,7 +48,7 @@ public class CareConnectDbContext : DbContext
     // Public referral comment thread (token-authenticated, no login required)
     public DbSet<ReferralComment> ReferralComments => Set<ReferralComment>();
 
-    // Referral Attribution — configurable referral-source tracking and representative access.
+    // Referral Origination — configurable referral-source tracking and representative access.
     public DbSet<ReferralAttribution> ReferralAttributions => Set<ReferralAttribution>();
     public DbSet<ReferralAttributionAccessCode> ReferralAttributionAccessCodes => Set<ReferralAttributionAccessCode>();
 

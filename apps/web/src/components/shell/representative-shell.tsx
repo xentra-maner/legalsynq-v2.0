@@ -25,7 +25,7 @@ const ACTIVE_BG    = "#fff7ed"; // orange-50  — same GLOBAL_DEFAULTS.appearanc
  * Portal. Deliberately does NOT import AppShell, PRODUCT_NAV, or any admin navigation
  * component — this is structural isolation, not conditional hiding. There is no session
  * here at all: this shell can never reach tenant settings, user administration,
- * attribution configuration, admin referral queues, provider/law-firm administration,
+ * origination configuration, admin referral queues, provider/law-firm administration,
  * billing, or any other admin surface, because those routes and components are simply
  * never imported here.
  *
@@ -35,7 +35,7 @@ const ACTIVE_BG    = "#fff7ed"; // orange-50  — same GLOBAL_DEFAULTS.appearanc
  * orange active-item accent — GLOBAL_DEFAULTS.appearance.nav in config/app-settings.ts),
  * and a plain white content area. The only differences are what can't exist without a
  * session: no product switcher, no notification bell, no user avatar/profile menu — those
- * are replaced with the unlocked attribution's name and a "Lock" action.
+ * are replaced with the unlocked origination's name and a "Lock" action.
  */
 export function RepresentativeShell({ children }: RepresentativeShellProps) {
   return (

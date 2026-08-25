@@ -41,6 +41,7 @@ describe('ReferralThreadPage', () => {
       clientName: 'Jane Doe',
       service: 'Physical Therapy',
       providerName: 'Demo Provider',
+      referralAttribution: { id: 'attr-1', firstName: 'Cam', lastName: 'Perry' },
       createdAtUtc: '2026-06-11T00:00:00Z',
       comments: [],
       attachments: [],
@@ -56,7 +57,12 @@ describe('ReferralThreadPage', () => {
     expect(redirectMock).not.toHaveBeenCalled();
     expect(result).toMatchObject({
       type: threadClientMock,
-      props: { token: 'abc123', data: threadData },
+      props: {
+        token: 'abc123',
+        data: expect.not.objectContaining({
+          referralAttribution: expect.anything(),
+        }),
+      },
     });
   });
 });

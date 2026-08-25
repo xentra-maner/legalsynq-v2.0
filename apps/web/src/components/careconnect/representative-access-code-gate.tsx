@@ -38,7 +38,7 @@ interface Props {
  * one-time client-side "unlocked" boolean while the actual data endpoints stay open
  * regardless), this one persists the raw code itself and every page under it resends that
  * code on every data request; the backend re-verifies it from scratch each time (see
- * PublicRepresentativeEndpoints). Revoking a code or deactivating its attribution takes
+ * PublicRepresentativeEndpoints). Revoking a code or deactivating its origination takes
  * effect on the very next request, not on next unlock.
  */
 export function RepresentativeAccessCodeGate({ tenantId, tenantDisplayName, children }: Props) {

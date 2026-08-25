@@ -79,6 +79,7 @@ public class PublicReferralThreadResponse
     public string? DateOfAccident { get; init; }
     public Guid?   TreatmentTypeId   { get; init; }
     public string? TreatmentTypeName { get; init; }
+    public ReferralAttributionSummary? ReferralAttribution { get; init; }
     public string? LienCompanyName { get; init; }
     public string? LienCompanyEmail { get; init; }
     public IReadOnlyList<ReferralCommentResponse> Comments { get; init; } = [];

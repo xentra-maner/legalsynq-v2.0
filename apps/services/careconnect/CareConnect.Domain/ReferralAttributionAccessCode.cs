@@ -3,7 +3,7 @@ using BuildingBlocks.Domain;
 namespace CareConnect.Domain;
 
 /// <summary>
-/// A tenant-admin-generated access code scoped to one Referral Attribution. There is no
+/// A tenant-admin-generated access code scoped to one Referral Origination. There is no
 /// login and no "redeemer" — the code itself is presented anonymously on every
 /// representative-portal request and re-validated server-side each time (see
 /// ReferralAttributionAccessCodeService.VerifyAsync). This mirrors the platform's other

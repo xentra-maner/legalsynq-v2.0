@@ -11,11 +11,11 @@ public class ReferralAttributionResponse
     public bool IsActive { get; set; }
     public int? DisplayOrder { get; set; }
 
-    /// <summary>True when at least one referral currently carries this attribution.
+    /// <summary>True when at least one referral currently carries this origination.
     /// Tenant admins use this to know a destructive delete isn't available — deactivate instead.</summary>
     public bool IsUsed { get; set; }
 
-    /// <summary>Count of active (IsActive) representative access codes generated for this attribution.</summary>
+    /// <summary>Count of active (IsActive) representative access codes generated for this origination.</summary>
     public int ActiveAccessCodeCount { get; set; }
 
     public DateTime CreatedAtUtc { get; set; }
@@ -45,7 +45,7 @@ public class SetReferralAttributionActiveRequest
     public bool IsActive { get; set; }
 }
 
-/// <summary>Admin-facing attribution field on a referral: id and name only.</summary>
+/// <summary>Admin-facing origination field on a referral: id and name only.</summary>
 public class ReferralAttributionSummary
 {
     public Guid Id { get; set; }

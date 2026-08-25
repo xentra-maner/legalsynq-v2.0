@@ -157,7 +157,7 @@ export default function RepresentativeReferralDetailPage({ params }: PageProps) 
                 />
                 <Field label="Law Firm" value={referral.lawFirm.displayName} />
                 <Field
-                  label="Referral Attribution"
+                  label="Referral Origination"
                   value={`${referral.referralAttribution.firstName} ${referral.referralAttribution.lastName}`.trim()}
                 />
               </Section>

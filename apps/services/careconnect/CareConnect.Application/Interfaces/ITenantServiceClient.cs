@@ -71,7 +71,7 @@ public interface ITenantServiceClient
     /// Calls GET /api/v1/public/resolve/by-code/{code} on the Tenant service.
     ///
     /// Used for idempotent, environment-portable seed operations (e.g. the initial
-    /// Referral Attribution seed) that must not hardcode a tenant GUID.
+    /// Referral Origination seed) that must not hardcode a tenant GUID.
     ///
     /// Returns null when the code does not resolve, the Tenant service is unreachable,
     /// or BaseUrl is not configured.

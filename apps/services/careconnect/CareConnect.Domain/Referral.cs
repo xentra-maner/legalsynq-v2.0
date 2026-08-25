@@ -109,7 +109,7 @@ public class Referral : AuditableEntity
     // mismatched version are rejected as revoked.
     public int TokenVersion { get; private set; } = 1;
 
-    // ── Referral Attribution (optional; who/what originated the referral) ─
+    // ── Referral Origination (optional; who/what originated the referral) ─
     public Guid? ReferralAttributionId { get; private set; }
 
     public Provider? Provider { get; private set; }

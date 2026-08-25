@@ -236,10 +236,10 @@ app.Logger.LogInformation(
     app.Logger.LogInformation("CareConnect database migrations applied successfully.");
 }
 
-// ── Referral Attribution seed (idempotent) ────────────────────────────────
+// ── Referral Origination seed (idempotent) ────────────────────────────────
 // Configured via ReferralAttributionSeed:TenantCode in appsettings/secrets — empty
 // (the default) is a no-op, so this never runs unless an environment explicitly
-// configures the tenant that should receive the initial attribution (e.g. the
+// configures the tenant that should receive the initial origination (e.g. the
 // CareConnect tenant that hired Cam Perry). Resolves the tenant by code via the
 // Tenant service rather than a hardcoded GUID, so the same config works across
 // dev/staging/prod without editing code per environment. Safe to run on every
@@ -409,7 +409,7 @@ app.MapPublicNetworkEndpoints();       // CC2-INT-B07: public network surface (a
 app.MapEnrollmentEndpoints();          // CC2-ENROLL: provider self-enrollment (anonymous)
 app.MapReferralThreadEndpoints();      // Public referral comment thread (token-authenticated)
 app.MapProviderOnboardingEndpoints();  // CC2-INT-B09: provider tenant self-onboarding
-app.MapReferralAttributionEndpoints();          // Referral Attribution configuration (tenant admin)
+app.MapReferralAttributionEndpoints();          // Referral Origination configuration (tenant admin)
 app.MapReferralAttributionAccessCodeEndpoints(); // Referral Representative access codes (tenant admin)
 app.MapPublicRepresentativeEndpoints();          // Referral Representative Portal (anonymous, code-gated)
 

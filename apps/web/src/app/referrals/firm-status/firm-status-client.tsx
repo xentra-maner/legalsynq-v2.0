@@ -13,6 +13,12 @@ import {
 import type { ReferralMessageAttachment } from '@/types/careconnect';
 import { formatReferralLocation } from '@/lib/referral-location';
 
+interface ReferralAttributionSummary {
+  id: string;
+  firstName?: string | null;
+  lastName?: string | null;
+}
+
 interface Comment {
   id:         string;
   senderType: string;
@@ -45,6 +51,7 @@ interface ThreadData {
   dateOfAccident?:    string;
   treatmentTypeId?:   string;
   treatmentTypeName?: string;
+  referralAttribution?: ReferralAttributionSummary | null;
   lienCompanyName?:   string | null;
   lienCompanyEmail?:  string | null;
   createdAtUtc:       string;
@@ -87,6 +94,13 @@ function resolveBrowserTimezone() {
   } catch {
     return 'UTC';
   }
+}
+
+function referralOriginationName(attribution?: ReferralAttributionSummary | null): string | null {
+  const firstName = attribution?.firstName?.trim() ?? '';
+  const lastName = attribution?.lastName?.trim() ?? '';
+  const name = [firstName, lastName].filter(Boolean).join(' ');
+  return name || null;
 }
 
 const s: Record<string, React.CSSProperties> = {
@@ -287,6 +301,7 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
   };
 
   const location = formatReferralLocation(data);
+  const originationName = referralOriginationName(data.referralAttribution);
 
   return (
     <div style={s.page}>
@@ -311,6 +326,7 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
             <FieldBlock label="Submitted" value={formatDate(data.createdAtUtc, timezone)} />
             <FieldBlock label="Urgency" value={data.urgency ?? '—'} />
             <FieldBlock label="Type of Treatment" value={data.treatmentTypeName ?? '—'} />
+            {originationName && <FieldBlock label="Referral Origination" value={originationName} />}
             <FieldBlock label="Date of Accident" value={data.dateOfAccident ?? '—'} />
             {data.lienCompanyName && <FieldBlock label="Lien Company" value={data.lienCompanyName} />}
             {data.lienCompanyEmail && <FieldBlock label="Lien Company Email" value={data.lienCompanyEmail} />}

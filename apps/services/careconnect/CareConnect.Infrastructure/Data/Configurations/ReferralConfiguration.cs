@@ -57,7 +57,7 @@ public class ReferralConfiguration : IEntityTypeConfiguration<Referral>
         builder.Property(r => r.CreatedByUserId);
         builder.Property(r => r.UpdatedByUserId);
 
-        // Referral Attribution (optional)
+        // Referral Origination (optional)
         builder.Property(r => r.ReferralAttributionId);
 
         // Indexes
@@ -80,7 +80,7 @@ public class ReferralConfiguration : IEntityTypeConfiguration<Referral>
         builder.HasIndex(r => r.SubjectPartyId)
             .HasDatabaseName("IX_Referrals_SubjectPartyId");
 
-        // Referral Attribution — representative visibility scope hot paths.
+        // Referral Origination — representative visibility scope hot paths.
         builder.HasIndex(r => r.ReferralAttributionId)
             .HasDatabaseName("IX_Referrals_ReferralAttributionId");
         builder.HasIndex(r => new { r.TenantId, r.ReferralAttributionId })

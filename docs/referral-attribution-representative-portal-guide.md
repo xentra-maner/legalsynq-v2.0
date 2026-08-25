@@ -1,4 +1,4 @@
-# Referral Attribution & Referral Representative Portal — Operational Guide
+# Referral Origination & Referral Representative Portal — Operational Guide
 
 A step-by-step guide to setting up and using this feature. No technical background needed.
 
@@ -7,7 +7,7 @@ A step-by-step guide to setting up and using this feature. No technical backgrou
 ## What This Feature Does
 
 - You can create named "sources" for referrals — for example, a person like **Cam Perry**, a
-  campaign, or a partner. This is called a **Referral Attribution**.
+  campaign, or a partner. This is called a **Referral Origination**.
 - When a law firm submits a referral, they can optionally pick a source.
 - You can generate an **access code** for a source and give it to the person who should see
   its referrals. That person enters the code themselves at a portal link — **no account or
@@ -44,8 +44,8 @@ engineering help.
 
 ## Step 1: Create a Referral Source
 
-1. In the CareConnect sidebar, click **Referral Attributions**.
-2. Click **+ Add Attribution**.
+1. In the CareConnect sidebar, click **Referral Originations**.
+2. Click **+ Add Origination**.
 3. Fill in:
    - **First Name** and **Last Name** — the name people will see (example: `Cam` / `Perry`).
    - **Code** — a short internal identifier with no spaces (example: `CAM_PERRY`). This cannot
@@ -67,7 +67,7 @@ on new submissions, and immediately cuts off any active representative access co
 
 ## Step 2: Give a Person Access as a Referral Representative
 
-1. In the CareConnect sidebar, click **Referral Attributions**, then open the **⋮** menu on the
+1. In the CareConnect sidebar, click **Referral Originations**, then open the **⋮** menu on the
    source and choose **View**.
 2. Under **Representative Access Code**, click **+ Generate Access Code**.
 3. (Optional) Set a start date and/or end date if access should only apply during a certain
@@ -76,7 +76,7 @@ on new submissions, and immediately cuts off any active representative access co
 5. A code appears on screen (for example `H7G4-4G6V-XU`) — **copy it now**. It will not be
    shown again after you leave this screen or generate another code.
 6. Share the code with the person securely (in person, a password manager, etc. — not an
-   unencrypted email if you can avoid it). The **Referral Attributions** list page (Step 1) has
+   unencrypted email if you can avoid it). The **Referral Originations** list page (Step 1) has
    a **Representative Portal URL** with **Copy**/**Open** buttons — that's the same link for
    every representative, so send it along with the code.
 7. That person opens the portal link and enters the code themselves — no account, no login,
@@ -114,7 +114,7 @@ someone who already has the portal open.
 
 When a law firm user fills out a referral form, they will see a field:
 
-> **Referral Attribution**
+> **Referral Origination**
 > *Select the person, Campaign, or partner responsible for originating this referral.*
 
 - This field is optional and starts blank — nothing is pre-selected.
@@ -127,7 +127,7 @@ When a law firm user fills out a referral form, they will see a field:
 ## Step 4: Admin — Viewing a Referral's Source
 
 1. Open any referral's detail page.
-2. You'll see a **Referral Attribution** field showing the source that was selected at
+2. You'll see a **Referral Origination** field showing the source that was selected at
    submission, or a dash (**—**) if none was chosen.
 
 The source is set only once, by the law firm at the moment they submit the referral, and
@@ -144,9 +144,9 @@ after the fact; the law firm needs to get it right at submission time.
    gave you (dashes included or not, it doesn't matter) and click **View My Referrals**.
 3. Once unlocked, you'll see two options: **Dashboard** and **My Referrals**. You will not see
    any admin or settings screens — only these.
-4. **Dashboard** shows totals: how many referrals are attributed to your source, and how many
+4. **Dashboard** shows totals: how many referrals originated from your source, and how many
    are new, open, or closed. You can filter by date range.
-5. **My Referrals** shows a list of only the referrals attributed to your source. You can
+5. **My Referrals** shows a list of only the referrals originated from your source. You can
    filter by status or date.
 6. Click any referral to see its details: reference number, submission date, status, law firm,
    provider, and status history.
@@ -181,8 +181,8 @@ If someone still sees an old page, it's likely a page they had open before you r
 code — refreshing the page will show the correct (blocked) result.
 
 **Q: Can the portal show referrals from other tenants or companies?**
-A: No. It only ever shows referrals that belong to your organization and that are attributed
-to the source the code was generated for.
+A: No. It only ever shows referrals that belong to your organization and that originated from
+the source the code was generated for.
 
 **Q: Can anything be edited or deleted from the portal?**
 A: No. It's read-only in this release.

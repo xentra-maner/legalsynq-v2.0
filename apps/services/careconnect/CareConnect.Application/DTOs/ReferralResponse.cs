@@ -60,6 +60,6 @@ public class ReferralResponse
     public Guid?   TreatmentTypeId   { get; set; }
     public string? TreatmentTypeName { get; set; }
 
-    // Referral Attribution — who or what originated this referral. Null = "Not specified".
+    // Referral Origination — who or what originated this referral. Null = "Not specified".
     public ReferralAttributionSummary? ReferralAttribution { get; set; }
 }

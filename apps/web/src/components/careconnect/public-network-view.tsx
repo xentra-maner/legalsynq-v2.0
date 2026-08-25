@@ -1858,7 +1858,7 @@ function ReferralPanel({
                     {treatmentTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                 </PanelField>
-                <PanelField label="Referral Attribution" hint="optional">
+                <PanelField label="Referral Origination" hint="optional">
                   <select
                     value={form.referralAttributionId}
                     onChange={e => update('referralAttributionId', e.target.value)}

@@ -143,6 +143,33 @@ public class ReferralThreadServiceTests
     }
 
     [Fact]
+    public async Task GetPublicThreadAccessAsync_ReturnsReferralOrigination()
+    {
+        var referral = BuildReferral(referringOrganizationId: null);
+        SetReferralAttribution(referral, "Cam", "Perry");
+
+        var repo = new Mock<IReferralRepository>();
+        repo.Setup(r => r.GetByIdGlobalAsync(referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(referral);
+
+        var commentsRepo = new Mock<IReferralCommentRepository>();
+        commentsRepo.Setup(r => r.GetByReferralAsync(referral.TenantId, referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var emailService = Mock.Of<IReferralEmailService>(e =>
+            e.ValidateViewTokenDetailed("valid-token") ==
+            CareConnect.Application.DTOs.ReferralTokenValidationOutcome.Success(referral.Id, referral.TokenVersion));
+
+        var sut = BuildService(repo, commentsRepo, emailService);
+
+        var result = await sut.GetPublicThreadAccessAsync("valid-token");
+
+        Assert.NotNull(result.Data?.ReferralAttribution);
+        Assert.Equal("Cam", result.Data!.ReferralAttribution!.FirstName);
+        Assert.Equal("Perry", result.Data.ReferralAttribution.LastName);
+    }
+
+    [Fact]
     public async Task GetPublicThreadAccessAsync_PrefersFacilityAddress_OverProviderDefaultAddress()
     {
         var referral = BuildReferral(referringOrganizationId: null);
@@ -823,6 +850,21 @@ public class ReferralThreadServiceTests
     private static void SetProvider(Referral referral, Provider provider)
     {
         typeof(Referral).GetProperty(nameof(Referral.Provider))!.SetValue(referral, provider);
+    }
+
+    private static void SetReferralAttribution(Referral referral, string firstName, string lastName)
+    {
+        var attribution = ReferralAttribution.Create(
+            referral.TenantId,
+            firstName,
+            lastName,
+            $"{firstName}_{lastName}".ToUpperInvariant(),
+            null,
+            true,
+            null,
+            null);
+
+        typeof(Referral).GetProperty(nameof(Referral.ReferralAttribution))!.SetValue(referral, attribution);
     }
 
     private static ReferralAttachment CreateMessageAttachment(

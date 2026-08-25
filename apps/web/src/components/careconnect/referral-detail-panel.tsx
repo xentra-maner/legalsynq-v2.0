@@ -88,7 +88,7 @@ export function ReferralDetailPanel({ referral, hideHeader = false, timezone }: 
           <Field label="Date of accident"   value={referral.dateOfAccident ? formatDateOnlyField(referral.dateOfAccident) : undefined} />
           <Field label="Type of treatment"  value={referral.treatmentTypeName ?? '—'} />
           <Field
-            label="Referral Attribution"
+            label="Referral Origination"
             value={referral.referralAttribution?.firstName
               ? `${referral.referralAttribution.firstName} ${referral.referralAttribution.lastName}`
               : undefined}

@@ -14,7 +14,7 @@ namespace CareConnect.Api.Endpoints;
 /// permission codes this gate requires). Admins generate a code scoped to one attribution
 /// and share it out of band; they never see or choose which user account redeems it — see
 /// RepresentativeReferralEndpoints' redeem route for the self-service side.
-/// Suggested UI location: CareConnect → Referral Attributions → (view an attribution).
+/// Suggested UI location: CareConnect → Referral Originations → (view an origination).
 /// </summary>
 public static class ReferralAttributionAccessCodeEndpoints
 {

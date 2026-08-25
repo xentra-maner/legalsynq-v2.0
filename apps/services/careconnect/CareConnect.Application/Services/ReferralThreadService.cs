@@ -96,6 +96,13 @@ public class ReferralThreadService : IReferralThreadService
             CreatedAtUtc = referral.CreatedAtUtc,
             TreatmentTypeId   = referral.TreatmentTypeId,
             TreatmentTypeName = treatmentTypeName,
+            ReferralAttribution = referral.ReferralAttribution is null ? null : new ReferralAttributionSummary
+            {
+                Id        = referral.ReferralAttribution.Id,
+                FirstName = referral.ReferralAttribution.FirstName,
+                LastName  = referral.ReferralAttribution.LastName,
+                IsActive  = referral.ReferralAttribution.IsActive,
+            },
             LienCompanyName = referral.LienCompanyName,
             LienCompanyEmail = referral.LienCompanyEmail,
             ProviderHasAccount = ProviderHasPortalAccount(referral.Provider),

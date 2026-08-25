@@ -50,6 +50,8 @@ export default async function ReferralThreadPage({ searchParams }: Props) {
     process.env.CC_COMMON_PORTAL_HOSTNAME,
     `/careconnect/referrals/${threadData.referralId}`,
   );
+  const providerThreadData = { ...threadData };
+  delete providerThreadData.referralAttribution;
 
-  return <ThreadClient token={token} data={threadData} loginUrl={loginUrl} />;
+  return <ThreadClient token={token} data={providerThreadData} loginUrl={loginUrl} />;
 }

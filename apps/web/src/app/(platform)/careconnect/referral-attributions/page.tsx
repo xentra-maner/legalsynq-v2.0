@@ -1,5 +1,5 @@
 /**
- * Tenant administration of Referral Attribution options.
+ * Tenant administration of Referral Origination options.
  * Route: /careconnect/referral-attributions
  *
  * Server component gate (admin only) wrapping a client component that owns
@@ -18,7 +18,7 @@ export default async function ReferralAttributionsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Referral Attributions</h1>
+          <h1 className="text-xl font-semibold text-gray-900">Referral Originations</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             Configure who or what can be selected as a referral&apos;s origin — representatives, campaigns, or partners.
           </p>

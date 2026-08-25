@@ -156,7 +156,7 @@ export const careConnectApi = {
       apiClient.get<ReferralAuditEvent[]>(`/careconnect/api/referrals/${id}/audit`),
   },
 
-  // ── Referral Attribution configuration (tenant admin) ────────────────────────
+  // ── Referral Origination configuration (tenant admin) ────────────────────────
   referralAttributions: {
     /** GET /api/referral-attributions/options — active options for the current tenant (law firm dropdown) */
     options: () =>
@@ -182,12 +182,12 @@ export const careConnectApi = {
   },
 
   // ── Referral Representative access codes (tenant admin) ──────────────────────
-  // Admin generates a code scoped to one attribution; the representative enters it
+  // Admin generates a code scoped to one origination; the representative enters it
   // themselves at the anonymous portal — see representative-portal-api.ts, not this
-  // file. No admin-typed user linking. Exactly one active code per attribution —
-  // scoped lookup only, no cross-attribution list.
+  // file. No admin-typed user linking. Exactly one active code per origination —
+  // scoped lookup only, no cross-origination list.
   referralAttributionAccessCodes: {
-    /** GET .../by-attribution/{id} — the attribution's single active code, or undefined (204) if none. */
+    /** GET .../by-attribution/{id} — the origination's single active code, or undefined (204) if none. */
     getByAttribution: (referralAttributionId: string) =>
       apiClient.get<ReferralAttributionAccessCode | undefined>(
         `/careconnect/api/referral-representative-access-codes/by-attribution/${referralAttributionId}`,

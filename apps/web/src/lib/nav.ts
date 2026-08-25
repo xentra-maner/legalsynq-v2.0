@@ -79,12 +79,12 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
           requiredRoles: [ProductRole.CareConnectReferrerAdmin],
           hiddenForOrgTypes: [OrgType.LienOwner],
         },
-        // Referral Attribution configuration — tenant admin only. Tenant-portal
+        // Referral Origination configuration — tenant admin only. Tenant-portal
         // configuration, not part of the restricted single-product CareConnect
         // common portal (careconnect-demo.* / PORTAL_CARECONNECT_SUBDOMAIN).
         {
           href: "/careconnect/referral-attributions",
-          label: "Referral Attributions",
+          label: "Referral Originations",
           icon: "ri-price-tag-3-line",
           adminOnly: true,
           hiddenInProductPortal: true,

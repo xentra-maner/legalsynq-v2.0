@@ -14,7 +14,7 @@ using Xunit;
 namespace CareConnect.Tests.Application;
 
 /// <summary>
-/// Covers referral creation with/without/invalid Referral Attribution. Attribution is set
+/// Covers referral creation with/without/invalid Referral Origination. Origination is set
 /// only at law firm submission time and is immutable afterward — there is no admin edit
 /// path (deliberately; see ReferralEndpoints.cs's note where that endpoint used to live).
 /// </summary>

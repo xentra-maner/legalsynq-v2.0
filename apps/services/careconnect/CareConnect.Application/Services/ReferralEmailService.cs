@@ -1020,6 +1020,14 @@ public class ReferralEmailService : IReferralEmailService
         return string.IsNullOrWhiteSpace(withZip) ? null : withZip;
     }
 
+    private static string? ReferralOriginationName(Referral r)
+    {
+        var firstName = r.ReferralAttribution?.FirstName?.Trim();
+        var lastName = r.ReferralAttribution?.LastName?.Trim();
+        var name = string.Join(" ", new[] { firstName, lastName }.Where(part => !string.IsNullOrWhiteSpace(part)));
+        return string.IsNullOrWhiteSpace(name) ? null : name;
+    }
+
     /// <summary>Titled section with orange-gradient rule and a data table.</summary>
     private static string Section(string title, string rows)
         => string.IsNullOrEmpty(rows) ? "" : $"""
@@ -1145,6 +1153,7 @@ public class ReferralEmailService : IReferralEmailService
             Row("Urgency",           r.Urgency) +
             Row("Date of Accident",  r.DateOfAccident?.ToString("yyyy-MM-dd")) +
             Row("Type of Treatment", treatmentTypeName) +
+            Row("Referral Origination", ReferralOriginationName(r)) +
             Row("Notes",             r.Notes);
 
         var providerRows =
@@ -1281,6 +1290,7 @@ public class ReferralEmailService : IReferralEmailService
             Row("Patient",  $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
             Row("Service",  r.RequestedService) +
             Row("Provider", provName, bold: true) +
+            Row("Referral Origination", ReferralOriginationName(r)) +
             Row("Case #",   r.CaseNumber);
 
         var footer = $"<strong>{provName}</strong> will be in touch with your client to continue coordinating care.";
@@ -1349,6 +1359,7 @@ public class ReferralEmailService : IReferralEmailService
             Row("Patient",  $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
             Row("Service",  r.RequestedService) +
             Row("Provider", provName) +
+            Row("Referral Origination", ReferralOriginationName(r)) +
             Row("Case #",   r.CaseNumber);
 
         var footer = $"You may search for an alternative provider or contact <strong>{provName}</strong> directly for more information.";
@@ -1397,6 +1408,7 @@ public class ReferralEmailService : IReferralEmailService
             Row("Patient",  $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
             Row("Service",  r.RequestedService) +
             Row("Provider", provName) +
+            Row("Referral Origination", ReferralOriginationName(r)) +
             Row("Case #",   r.CaseNumber);
 
         var footer = "If this cancellation was unexpected, please contact the involved parties for more information.";
@@ -1425,7 +1437,8 @@ public class ReferralEmailService : IReferralEmailService
         var summaryRows =
             Row("Patient",  $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
             Row("Service",  r.RequestedService) +
-            Row("From",     senderLabel);
+            Row("From",     senderLabel) +
+            Row("Referral Origination", isFromReferrer ? null : ReferralOriginationName(r));
 
         var footer = "Reply directly in the referral thread using the button above.";
         IReadOnlyCollection<ReferralAttachment> commentAttachments = comment.Attachments ?? [];

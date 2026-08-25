@@ -64,14 +64,14 @@ public class ReferralAttributionAccessCodeService : IReferralAttributionAccessCo
         // malicious/buggy client sends an attribution ID from a different tenant.
         var attribution = await _attributions.GetByIdAsync(tenantId, request.ReferralAttributionId, ct)
             ?? throw new ValidationException("One or more validation errors occurred.",
-                new() { ["referralAttributionId"] = ["Referral Attribution was not found for this tenant."] });
+                new() { ["referralAttributionId"] = ["Referral Origination was not found for this tenant."] });
 
-        // Exactly one active code per attribution — generating a replacement requires
+        // Exactly one active code per origination — generating a replacement requires
         // revoking the existing one first (see SetActiveAsync). Prevents multiple
         // simultaneously-valid codes for the same source.
         if (await _accessCodes.CountActiveAsync(tenantId, attribution.Id, ct) > 0)
             throw new ConflictException(
-                $"Attribution '{attribution.Id}' already has an active access code.", "ACTIVE_CODE_EXISTS");
+                $"Origination '{attribution.Id}' already has an active access code.", "ACTIVE_CODE_EXISTS");
 
         string rawCode;
         string hash;
@@ -93,7 +93,7 @@ public class ReferralAttributionAccessCodeService : IReferralAttributionAccessCo
 
         EmitAudit("careconnect.referral_attribution_access_code.generated", "ReferralAttributionAccessCodeGenerated",
             tenantId, accessCode, actorUserId, actorName,
-            $"Access code generated for attribution '{attribution.FullName}'.",
+            $"Access code generated for origination '{attribution.FullName}'.",
             previousValue: null, newValue: ToAuditSnapshot(accessCode));
 
         var response = ToResponse(accessCode, attribution.FullName);
@@ -134,9 +134,9 @@ public class ReferralAttributionAccessCodeService : IReferralAttributionAccessCo
     /// Anonymous, stateless verification for the Representative Portal — no login, nothing
     /// is mutated or recorded as "redeemed". Every representative-facing data request must
     /// call this again (see PublicRepresentativeEndpoints); a code that was valid a minute
-    /// ago is re-checked from scratch, so revocation and attribution deactivation take
+    /// ago is re-checked from scratch, so revocation and origination deactivation take
     /// effect immediately on the very next request. Deliberately generic on failure — never
-    /// distinguishes "wrong code" from "inactive" from "expired" from "attribution
+    /// distinguishes "wrong code" from "inactive" from "expired" from "origination
     /// deactivated" in what's returned, so a guessed code gets no signal about which of
     /// those states it's in.
     /// </summary>
@@ -166,7 +166,7 @@ public class ReferralAttributionAccessCodeService : IReferralAttributionAccessCo
     {
         var record = await _accessCodes.GetByIdAsync(tenantId, id, ct);
         if (record is null)
-            throw new NotFoundException($"Referral Attribution access code '{id}' was not found.");
+            throw new NotFoundException($"Referral Origination access code '{id}' was not found.");
         return record;
     }
 

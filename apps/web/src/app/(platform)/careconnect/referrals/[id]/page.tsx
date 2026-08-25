@@ -132,7 +132,7 @@ export default async function ReferralDetailPage({ params, searchParams }: Refer
               Referrers can book via the provider availability page at any time. */}
 
           {/* 3. Referral details — body only (header rendered above). Treatment type editing is
-              inline. Referral Attribution is shown here (read-only) — it's set only once, at
+              inline. Referral Origination is shown here (read-only) — it's set only once, at
               law firm submission time, and is immutable afterward; there is no admin edit
               control for it. */}
           <ReferralDetailPanel referral={referral} hideHeader />

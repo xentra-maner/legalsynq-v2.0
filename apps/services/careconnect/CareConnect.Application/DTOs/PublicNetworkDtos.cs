@@ -166,7 +166,7 @@ public sealed class PublicReferralRequest
     public Guid? TreatmentTypeId { get; set; }
 
     /// <summary>
-    /// Referral Attribution selected from the tenant's active options (optional). Validated
+    /// Referral Origination selected from the tenant's active options (optional). Validated
     /// server-side (must belong to this tenant and be active) by
     /// ReferralService.CreateAsync — never trusted at face value.
     /// </summary>

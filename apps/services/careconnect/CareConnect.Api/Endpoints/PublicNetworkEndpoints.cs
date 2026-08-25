@@ -292,8 +292,8 @@ public static class PublicNetworkEndpoints
         // ── GET /api/public/referral-attributions ───────────────────────────
         // Anonymous mirror of GET /api/referral-attributions/options — the authenticated
         // in-app referral form and this anonymous public one must offer the same active
-        // Referral Attribution options for a given tenant. Trust-boundary validated (same
-        // as other public endpoints), never exposes inactive attributions.
+        // Referral Origination options for a given tenant. Trust-boundary validated (same
+        // as other public endpoints), never exposes inactive originations.
         app.MapGet("/api/public/referral-attributions", async (
             HttpContext                    http,
             IConfiguration                 config,

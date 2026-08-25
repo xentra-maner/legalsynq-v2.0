@@ -13,8 +13,8 @@ Healthcare provider directory, referral management, and appointment scheduling.
 - Attachment management for referrals and appointments
 - Referral and appointment notes
 - Notification delivery on key lifecycle events
-- Configurable Referral Attribution (referral-source tracking) and the anonymous
-  Referral Portal (see "Referral Attribution & Referral Portal" below)
+- Configurable Referral Origination (referral-source tracking) and the anonymous
+  Referral Portal (see "Referral Origination & Referral Portal" below)
 
 ## Layer Structure
 
@@ -46,19 +46,19 @@ CareConnect.Tests/         Tests
 | `GET` | `/api/assistant-tools/providers/search` | Bearer | Assistant-only provider lookup |
 | `GET` | `/api/assistant-tools/referrers/search` | Bearer | Assistant-only referrer lookup |
 | `GET` | `/api/careconnect/appointments` | Bearer | List appointments |
-| `GET` | `/api/referral-attributions/options` | Bearer | Active Referral Attribution options for the caller's tenant (Law Firm Portal dropdown) |
-| `GET`/`POST`/`PATCH` | `/api/referral-attributions` | PlatformOrTenantAdmin | Tenant admin CRUD for Referral Attribution options |
+| `GET` | `/api/referral-attributions/options` | Bearer | Active Referral Origination options for the caller's tenant (Law Firm Portal dropdown) |
+| `GET`/`POST`/`PATCH` | `/api/referral-attributions` | PlatformOrTenantAdmin | Tenant admin CRUD for Referral Origination options |
 | `POST`/`PATCH`/`DELETE` | `/api/referral-representative-access-codes` | PlatformOrTenantAdmin | Tenant admin: generate/revoke a referral portal access code (no user selection) |
-| `GET` | `/api/referral-representative-access-codes/by-attribution/{id}` | PlatformOrTenantAdmin | The single active code for one attribution, or 204 if none — exactly one active code per attribution is allowed |
-| `POST` | `/api/public/referral-portal/verify` | Anonymous | Referral Portal — stateless access-code check, returns the named attribution |
+| `GET` | `/api/referral-representative-access-codes/by-attribution/{id}` | PlatformOrTenantAdmin | The single active code for one origination, or 204 if none — exactly one active code per origination is allowed |
+| `POST` | `/api/public/referral-portal/verify` | Anonymous | Referral Portal — stateless access-code check, returns the named origination |
 | `GET` | `/api/public/referral-portal/referrals` | Anonymous (`?code=`) | Referral Portal — paginated converted referral list, code re-verified per request |
 | `GET` | `/api/public/referral-portal/referrals/{id}` | Anonymous (`?code=`) | Referral Portal — restricted converted referral detail |
 | `GET` | `/api/public/referral-portal/referral-metrics` | Anonymous (`?code=`) | Referral Portal — dashboard metrics |
 | `GET` | `/api/public/referral-portal/law-firms` | Anonymous (`?code=`) | Referral Portal — law firm selector options |
 | `GET` | `/api/public/referral-portal/providers` | Anonymous (`?code=`) | Referral Portal — verified master provider list for recommendations |
 | `GET` | `/api/public/referral-portal/providers/map` | Anonymous (`?code=`) | Referral Portal — verified provider map markers for recommendations |
-| `GET` | `/api/public/referral-portal/pending-referrals` | Anonymous (`?code=`) | Referral Portal — paginated pending request list for that attribution |
-| `GET` | `/api/public/referral-portal/pending-referrals/{id}` | Anonymous (`?code=`) | Referral Portal — read one pending request attributed to the access code |
+| `GET` | `/api/public/referral-portal/pending-referrals` | Anonymous (`?code=`) | Referral Portal — paginated pending request list for that origination |
+| `GET` | `/api/public/referral-portal/pending-referrals/{id}` | Anonymous (`?code=`) | Referral Portal — read one pending request scoped to the access code's origination |
 | `POST` | `/api/public/referral-portal/pending-referrals` | Anonymous (`?code=`) | Referral Portal — submit a pending referral request to a law firm |
 | `POST` | `/api/public/referral-portal/pending-referrals/{id}/attachments/upload` | Anonymous (`?code=`) | Referral Portal — upload a document attachment for a pending request |
 | `GET`/`PUT`/`POST` | `/api/pending-referral-requests` | CARECONNECT_REFERRER or CARECONNECT_REFERRER_ADMIN | Law firm review queue; update request values, decline requests, and convert accepted requests |
@@ -71,7 +71,10 @@ CareConnect.Tests/         Tests
 | `POST` | `/api/networks/{networkId}/providers/import` | Anonymous, loopback-only | CSV/XLSX provider migration/import into a tenant network |
 | `GET`/`POST`/`DELETE` | `/api/law-firm-users[/invite\|/{userId}/resend-invite\|/{userId}/activate\|/{userId}/deactivate\|/{userId}/roles]` | CARECONNECT_REFERRER_ADMIN | Law Firm Company Admin (LSV3-1083) — list, invite/resend pending invites, activate/deactivate, and assign/revoke roles for a law firm's own users. Pending invitations are listed as `Invited`/`Invite sent` until accepted. No org-id route parameter: a caller always operates on their own organization only (TenantAdmin/PlatformAdmin can act on any org in the tenant). Proxies to Identity's internal `/api/internal/organizations/{organizationId}/users` endpoints, which independently re-verify org ownership. |
 
-### Referral Attribution & Referral Portal
+### Referral Origination & Referral Portal
+
+User-facing screens refer to this feature as Referral Origination. The underlying API and schema
+identifiers remain `ReferralAttribution*` / `cc_ReferralAttributions` for compatibility.
 
 `ReferralAttribution` (`cc_ReferralAttributions`) is a tenant-scoped, configurable label for who or
 what originated a referral (a representative, a campaign, a partner) — set on `referrals.ReferralAttributionId`
@@ -83,27 +86,27 @@ referral's details.
 
 `ReferralAttributionAccessCode` (`cc_ReferralAttributionAccessCodes`) grants referral portal
 access via a generated code, not admin-typed user linking and not a login. A tenant admin generates a
-code scoped to one attribution (optionally bounded by `AccessStartAtUtc`/`AccessEndAtUtc`) and shares
+code scoped to one origination (optionally bounded by `AccessStartAtUtc`/`AccessEndAtUtc`) and shares
 it with the intended representative out of band; the code is revealed once, in the generate response,
 and hashed (SHA-256 + `ReferralAttributionAccessCode:Pepper`) at rest — the plaintext is never
 persisted. There is no "redeemer" and nothing is stamped when a code is used: the Referral Portal
 is fully anonymous, and the associate simply presents the raw code on every request. The backend
 re-verifies it from scratch each time (`IReferralAttributionAccessCodeService.VerifyAsync`,
-stateless — no mutation), so a revoked code or a deactivated attribution takes effect on the very next
+stateless — no mutation), so a revoked code or a deactivated origination takes effect on the very next
 request, not on next login (there is no login).
 
-**Exactly one active code per attribution.** `GenerateAsync` rejects a new code with
-`ConflictException("ACTIVE_CODE_EXISTS")` (409) when one is already active for that attribution —
+**Exactly one active code per origination.** `GenerateAsync` rejects a new code with
+`ConflictException("ACTIVE_CODE_EXISTS")` (409) when one is already active for that origination —
 `SetActiveAsync(isActive: false)` (revoke) must run first. MySQL has no filtered unique index to
 enforce this at the schema level, so it's an application-layer check (`CountActiveAsync`); there is a
-narrow TOCTOU window if two generate requests for the same attribution land concurrently.
+narrow TOCTOU window if two generate requests for the same origination land concurrently.
 
-**Deactivating an attribution cuts off its code's access immediately**, even if the code is otherwise
-active and within its date window — `IsValidAt(nowUtc, attributionIsActive)` takes the attribution's
+**Deactivating an origination cuts off its code's access immediately**, even if the code is otherwise
+active and within its date window — `IsValidAt(nowUtc, attributionIsActive)` takes the origination's
 current state as an explicit parameter (resolved via `IReferralAttributionRepository` in
 `ReferralAttributionAccessCodeService.VerifyAsync`, never through the entity's own private-set
 `ReferralAttribution` navigation property, which only EF's `Include()` can populate and would otherwise
-make this check silently dependent on query shape). Reactivating the attribution restores access
+make this check silently dependent on query shape). Reactivating the origination restores access
 without a new code.
 
 There is no product role, no login, and no platform session anywhere on this surface — the access
@@ -140,8 +143,8 @@ Representatives" nav item — the list at `/careconnect/referral-attributions` s
 Name / Last Name / Status plus a kebab menu (View, Activate/Deactivate); **View** navigates to
 `/careconnect/referral-attributions/{id}`, which is where the full field set, the Edit action, and
 the access-code widget (generate/revoke) all live. Folding the code-generation UI into the
-attribution's own detail page — rather than a standalone cross-attribution admin page — is what
-lets "one attribution, one active code" be enforced simply, both in the UI (Generate only shows
+origination's own detail page — rather than a standalone cross-origination admin page — is what
+lets "one origination, one active code" be enforced simply, both in the UI (Generate only shows
 when there's no active code) and in the API (the 409 conflict above).
 
 Every representative-facing read is gated by the tenant feature flag before the code is even checked —
@@ -152,7 +155,7 @@ by default.
 
 Referral Portal submissions create `cc_PendingReferralRequests` rows instead of immediately creating
 `cc_Referrals`. The pending request stores the selected law firm organization, locked access-code
-attribution, immutable `Origin = ReferralAssociate`, patient/referral details, lien company name/email,
+origination, immutable `Origin = ReferralAssociate`, patient/referral details, lien company name/email,
 zero or more preferred medical provider/location recommendations, and review status (`PendingReview`,
 `Converted`, `Cancelled`). Preferred providers are advisory only: selecting them from the Referral
 Portal's master provider list/map does not create a referral, does not notify any provider, and does
@@ -161,9 +164,12 @@ not bypass law-firm review. The portal persists ordered preferences in
 preference for backward compatibility/default routing. Authenticated law-firm users with
 `CARECONNECT_REFERRER` or `CARECONNECT_REFERRER_ADMIN` list their own organization's pending requests,
 review all stored preferences, and convert one by selecting the final provider; conversion creates a normal referral, preserves
-attribution/origin/lien-company fields, and blocks repeat conversion. If the law firm converts without
+origination/origin/lien-company fields, and blocks repeat conversion. If the law firm converts without
 selecting a different provider, the first stored preference can be used as the default conversion
 target.
+Law-firm review screens, law-firm tokenized referral status links, and law-firm/referrer notification
+email summaries display Referral Origination when it is present. Provider-facing referral emails and
+provider thread links do not.
 
 Normal referrals now include immutable `Origin` (`LawFirm` for direct law-firm submissions and
 `ReferralAssociate` for converted pending requests) plus optional `LienCompanyName` and

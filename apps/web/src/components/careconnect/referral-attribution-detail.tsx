@@ -41,7 +41,7 @@ export function ReferralAttributionDetail({ id }: { id: string }) {
       setAttribution(data);
       setError(null);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to load Referral Attribution.');
+      setError(err instanceof ApiError ? err.message : 'Failed to load Referral Origination.');
     }
   }
 
@@ -277,14 +277,14 @@ export function ReferralAttributionDetail({ id }: { id: string }) {
         <h2 className="text-sm font-semibold text-gray-900 mb-1">Representative Access Code</h2>
         <p className="text-xs text-gray-500 mb-4">
           Generate a code and share it with the representative who should see this source&apos;s referrals — they
-          enter it themselves at the portal URL shown on the Referral Attributions list page.
+          enter it themselves at the portal URL shown on the Referral Originations list page.
         </p>
 
         {codeError && <p className="text-xs text-red-600 mb-3">{codeError}</p>}
 
         {!attribution.isActive && (activeCode || revealed) && (
           <div className="bg-amber-50 border border-amber-200 rounded-md px-3 py-2 text-xs text-amber-800 mb-3">
-            This attribution is deactivated — its access code will not grant viewing access until it&apos;s reactivated.
+            This origination is deactivated — its access code will not grant viewing access until it&apos;s reactivated.
           </div>
         )}
 

@@ -1,11 +1,11 @@
 /**
- * Referral Attribution detail.
+ * Referral Origination detail.
  * Route: /careconnect/referral-attributions/{id}
  *
  * Server component gate (admin only, same as the list page) wrapping a client
  * component that owns the read view, the Edit toggle, and the access-code
  * widget (generate/revoke — folded in here after the standalone Referral
- * Representatives page was retired, since a code is 1:1 with its attribution).
+ * Representatives page was retired, since a code is 1:1 with its origination).
  */
 
 import Link from 'next/link';
@@ -29,7 +29,7 @@ export default async function ReferralAttributionDetailPage({ params }: Referral
           href="/careconnect/referral-attributions"
           className="text-sm text-gray-500 hover:text-gray-800 transition-colors"
         >
-          ← Back to Referral Attributions
+          ← Back to Referral Originations
         </Link>
       </nav>
 

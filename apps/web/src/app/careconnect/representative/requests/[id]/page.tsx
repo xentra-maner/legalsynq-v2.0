@@ -105,7 +105,7 @@ export default function RepresentativePendingRequestDetailPage({ params }: PageP
         if (err instanceof ApiError && err.status === 404) {
           setNotFound(true);
         } else {
-          setError(err instanceof ApiError ? err.message : 'Failed to load pending request.');
+          setError(err instanceof ApiError ? err.message : 'Failed to load referral request.');
         }
       })
       .finally(() => setLoading(false));
@@ -114,14 +114,14 @@ export default function RepresentativePendingRequestDetailPage({ params }: PageP
   return (
     <div className="space-y-5">
       <Link href="/careconnect/referral/requests" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800">
-        <i className="ri-arrow-left-line" aria-hidden="true" /> Back to Pending Requests
+        <i className="ri-arrow-left-line" aria-hidden="true" /> Back to Referral Requests
       </Link>
 
-      {loading && <p className="text-sm text-gray-500">Loading pending request...</p>}
+      {loading && <p className="text-sm text-gray-500">Loading referral request...</p>}
 
       {notFound && (
         <div className="rounded-xl border border-gray-200 bg-white p-12 text-center">
-          <h3 className="mb-1 text-base font-semibold text-gray-900">Pending request not found</h3>
+          <h3 className="mb-1 text-base font-semibold text-gray-900">Referral request not found</h3>
           <p className="text-sm text-gray-500">This request does not exist, or is not attributed to you.</p>
         </div>
       )}

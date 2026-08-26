@@ -101,7 +101,7 @@ export default function RepresentativePendingRequestsPage() {
         setPageSize(data.pageSize);
         setError(null);
       })
-      .catch(err => setError(err instanceof ApiError ? err.message : 'Failed to load pending requests.'))
+      .catch(err => setError(err instanceof ApiError ? err.message : 'Failed to load referral requests.'))
       .finally(() => setLoading(false));
   }, [code, status, submittedFrom, submittedTo, page]);
 
@@ -112,7 +112,7 @@ export default function RepresentativePendingRequestsPage() {
     <div className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Pending Requests</h1>
+          <h1 className="text-xl font-semibold text-gray-900">Referral Requests</h1>
           <p className="mt-0.5 text-sm text-gray-500">
             Referral portal submissions and law firm decisions.
           </p>
@@ -177,10 +177,10 @@ export default function RepresentativePendingRequestsPage() {
         )}
 
         {loading ? (
-          <div className="p-8 text-sm text-gray-500">Loading pending requests...</div>
+          <div className="p-8 text-sm text-gray-500">Loading referral requests...</div>
         ) : items.length === 0 ? (
           <div className="p-12 text-center">
-            <h3 className="mb-1 text-base font-semibold text-gray-900">No pending requests found</h3>
+            <h3 className="mb-1 text-base font-semibold text-gray-900">No referral requests found</h3>
             <p className="text-sm text-gray-500">
               {status || submittedFrom || submittedTo
                 ? 'No requests match the current filters.'

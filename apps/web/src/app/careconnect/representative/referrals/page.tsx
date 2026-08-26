@@ -104,8 +104,8 @@ export default function RepresentativeReferralsPage() {
     <div className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">My Referrals</h1>
-          <p className="mt-0.5 text-sm text-gray-500">Converted referrals attributed to you.</p>
+          <h1 className="text-xl font-semibold text-gray-900">Converted Referrals</h1>
+          <p className="mt-0.5 text-sm text-gray-500">Converted referrals.</p>
         </div>
         <div className="rounded-lg border border-gray-200 bg-white px-4 py-3 text-right">
           <p className="text-2xl font-semibold text-gray-900">{totalCount.toLocaleString()}</p>

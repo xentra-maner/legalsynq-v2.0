@@ -178,7 +178,7 @@ export default function RepresentativeDashboardPage() {
         from: from || undefined,
         to: to || undefined,
         page: 1,
-        pageSize: 5,
+        pageSize: 3,
       }),
       fetchRepresentativeReferrals(code, {
         submittedFrom: from || undefined,
@@ -299,58 +299,84 @@ export default function RepresentativeDashboardPage() {
             <KpiCard
               label="Completed"
               value={metrics.completedReferrals}
-              detail="Resolved attributed referrals"
+              detail="Resolved originated referrals"
               icon={CheckCircle2}
               tone="bg-emerald-50 text-emerald-700"
             />
           </div>
 
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
-            <Panel
-              title="Recent Referral Activity"
-              action={(
-                <Link href="/careconnect/referral/referrals" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
-                  View all <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                </Link>
-              )}
-            >
-              {recentReferrals.length === 0 ? (
-                <div className="py-8 text-center">
-                  <Send className="mx-auto h-8 w-8 text-gray-300" aria-hidden="true" />
-                  <p className="mt-3 text-sm font-medium text-gray-900">No routed referrals in this range</p>
-                  <p className="mt-1 text-sm text-gray-500">New activity will appear here after the law firm routes a request.</p>
-                </div>
-              ) : (
-                <div className="divide-y divide-gray-100">
-                  {recentReferrals.map(item => (
-                    <Link
-                      key={item.referralId}
-                      href={`/careconnect/referral/referrals/${item.referralId}`}
-                      className="grid gap-3 py-3 hover:bg-gray-50 sm:grid-cols-[minmax(0,1fr)_140px_120px]"
-                    >
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="truncate text-sm font-semibold text-gray-950">{fullName(item)}</p>
-                          <span className={`shrink-0 rounded px-2 py-0.5 text-xs font-medium ring-1 ${statusTone(item.status.code)}`}>
-                            {item.status.displayName}
-                          </span>
+          <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
+            <div className="space-y-4">
+              <Panel
+                title="Recent Referral Activity"
+                action={(
+                  <Link href="/careconnect/referral/referrals" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+                    View all <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                  </Link>
+                )}
+              >
+                {recentReferrals.length === 0 ? (
+                  <div className="py-8 text-center">
+                    <Send className="mx-auto h-8 w-8 text-gray-300" aria-hidden="true" />
+                    <p className="mt-3 text-sm font-medium text-gray-900">No routed referrals in this range</p>
+                    <p className="mt-1 text-sm text-gray-500">New activity will appear here after the law firm routes a request.</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-gray-100">
+                    {recentReferrals.map(item => (
+                      <Link
+                        key={item.referralId}
+                        href={`/careconnect/referral/referrals/${item.referralId}`}
+                        className="grid gap-3 py-3 hover:bg-gray-50 sm:grid-cols-[minmax(0,1fr)_140px_120px]"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="truncate text-sm font-semibold text-gray-950">{fullName(item)}</p>
+                            <span className={`shrink-0 rounded px-2 py-0.5 text-xs font-medium ring-1 ${statusTone(item.status.code)}`}>
+                              {item.status.displayName}
+                            </span>
+                          </div>
+                          <p className="mt-1 truncate text-sm text-gray-500">
+                            {item.lawFirm.displayName} - {item.providerLocation?.name ?? item.provider.displayName}
+                          </p>
                         </div>
-                        <p className="mt-1 truncate text-sm text-gray-500">
-                          {item.lawFirm.displayName} - {item.providerLocation?.name ?? item.provider.displayName}
-                        </p>
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        <p className="font-medium text-gray-700">{item.referenceNumber}</p>
-                        <p>{formatDate(item.submittedAtUtc)}</p>
-                      </div>
-                      <div className="flex items-center justify-start text-sm font-medium text-primary sm:justify-end">
-                        View <ArrowRight className="ml-1 h-4 w-4" aria-hidden="true" />
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </Panel>
+                        <div className="text-sm text-gray-500">
+                          <p className="font-medium text-gray-700">{item.referenceNumber}</p>
+                          <p>{formatDate(item.submittedAtUtc)}</p>
+                        </div>
+                        <div className="flex items-center justify-start text-sm font-medium text-primary sm:justify-end">
+                          View <ArrowRight className="ml-1 h-4 w-4" aria-hidden="true" />
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </Panel>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <KpiCard
+                  label="Accepted"
+                  value={metrics.acceptedReferrals}
+                  detail="Accepted or in progress"
+                  icon={CheckCircle2}
+                  tone="bg-blue-50 text-blue-700"
+                />
+                <KpiCard
+                  label="Declined"
+                  value={metrics.declinedReferrals}
+                  detail="Provider or firm declined"
+                  icon={XCircle}
+                  tone="bg-red-50 text-red-700"
+                />
+                <KpiCard
+                  label="Cancelled"
+                  value={metrics.cancelledReferrals}
+                  detail={`${totalRecent.toLocaleString()} routed referral${totalRecent === 1 ? '' : 's'} in range`}
+                  icon={Clock3}
+                  tone="bg-gray-100 text-gray-700"
+                />
+              </div>
+            </div>
 
             <div className="space-y-4">
               <Panel
@@ -423,30 +449,6 @@ export default function RepresentativeDashboardPage() {
                 )}
               </Panel>
             </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <KpiCard
-              label="Accepted"
-              value={metrics.acceptedReferrals}
-              detail="Accepted or in progress"
-              icon={CheckCircle2}
-              tone="bg-blue-50 text-blue-700"
-            />
-            <KpiCard
-              label="Declined"
-              value={metrics.declinedReferrals}
-              detail="Provider or firm declined"
-              icon={XCircle}
-              tone="bg-red-50 text-red-700"
-            />
-            <KpiCard
-              label="Cancelled"
-              value={metrics.cancelledReferrals}
-              detail={`${totalRecent.toLocaleString()} routed referral${totalRecent === 1 ? '' : 's'} in range`}
-              icon={Clock3}
-              tone="bg-gray-100 text-gray-700"
-            />
           </div>
         </>
       ) : null}

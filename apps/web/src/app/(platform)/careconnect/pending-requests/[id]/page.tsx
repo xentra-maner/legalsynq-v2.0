@@ -550,7 +550,7 @@ export default function PendingReferralRequestDetailPage() {
       setTreatmentTypes(treatmentTypeRes.data);
       setSelectedProviders(preferredProvidersFor(nextRequest).map(reviewProviderFromPreference));
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to load pending request.");
+      setError(err instanceof ApiError ? err.message : "Failed to load referral request.");
     } finally {
       setLoading(false);
     }
@@ -755,7 +755,7 @@ export default function PendingReferralRequestDetailPage() {
       setFieldErrors(validateReviewDateFields(nextForm));
       return true;
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to update pending request.");
+      setError(err instanceof ApiError ? err.message : "Failed to update referral request.");
       return false;
     } finally {
       setSaving(false);
@@ -834,7 +834,7 @@ export default function PendingReferralRequestDetailPage() {
       const result = await careConnectApi.pendingReferralRequests.convert(request.id, selection);
       router.push(`/careconnect/referrals/${result.data.id}`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to accept pending request.");
+      setError(err instanceof ApiError ? err.message : "Failed to accept referral request.");
       setAccepting(false);
     }
   }
@@ -847,19 +847,19 @@ export default function PendingReferralRequestDetailPage() {
       await careConnectApi.pendingReferralRequests.decline(request.id);
       router.push("/careconnect/pending-requests");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to decline pending request.");
+      setError(err instanceof ApiError ? err.message : "Failed to decline referral request.");
       setDeclining(false);
     }
   }
 
   if (loading) {
-    return <p className="text-sm text-gray-500">Loading pending request...</p>;
+    return <p className="text-sm text-gray-500">Loading referral request...</p>;
   }
 
   if (!request || !form) {
     return (
       <div className="rounded-lg border border-gray-200 bg-white p-8 text-center text-sm text-gray-500">
-        Pending request was not found.
+        Referral request was not found.
       </div>
     );
   }
@@ -871,7 +871,7 @@ export default function PendingReferralRequestDetailPage() {
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <Link href="/careconnect/pending-requests" className="text-xs text-gray-400 transition-colors hover:text-gray-600">
-            ← Back to pending requests
+            ← Back to Referral Requests
           </Link>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <h1 className="text-xl font-semibold text-gray-900">{request.clientFirstName} {request.clientLastName}</h1>

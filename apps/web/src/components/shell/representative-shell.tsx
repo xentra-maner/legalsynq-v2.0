@@ -13,8 +13,8 @@ interface RepresentativeShellProps {
 const NAV_ITEMS = [
   { href: "/careconnect/referral/dashboard", label: "Dashboard", icon: "ri-dashboard-line" },
   { href: "/careconnect/referral/submit", label: "Submit Request", icon: "ri-send-plane-line" },
-  { href: "/careconnect/referral/requests", label: "Pending Requests", icon: "ri-inbox-archive-line" },
-  { href: "/careconnect/referral/referrals", label: "My Referrals", icon: "ri-file-list-3-line" },
+  { href: "/careconnect/referral/requests", label: "Referral Requests", icon: "ri-inbox-archive-line" },
+  { href: "/careconnect/referral/referrals", label: "Converted Referrals", icon: "ri-file-list-3-line" },
 ];
 
 const ACTIVE_COLOR = "#f97316"; // orange-500 — same GLOBAL_DEFAULTS.appearance.nav.activeColor as the main app

@@ -130,7 +130,7 @@ export default function PendingReferralRequestsPage() {
         return next;
       });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to load pending referral requests.");
+      setError(err instanceof ApiError ? err.message : "Failed to load referral requests.");
     } finally {
       setLoading(false);
     }
@@ -154,7 +154,7 @@ export default function PendingReferralRequestsPage() {
       const result = await careConnectApi.pendingReferralRequests.convert(item.id, selection);
       router.push(`/careconnect/referrals/${result.data.id}`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to accept pending request.");
+      setError(err instanceof ApiError ? err.message : "Failed to accept referral request.");
       setAcceptingId(null);
     }
   }
@@ -166,7 +166,7 @@ export default function PendingReferralRequestsPage() {
       await careConnectApi.pendingReferralRequests.decline(item.id);
       await load(page);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to decline pending request.");
+      setError(err instanceof ApiError ? err.message : "Failed to decline referral request.");
     } finally {
       setDecliningId(null);
     }
@@ -180,7 +180,7 @@ export default function PendingReferralRequestsPage() {
     <div className="space-y-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Pending referral requests</h1>
+          <h1 className="text-xl font-semibold text-gray-900">Referral Requests</h1>
           <p className="mt-0.5 text-sm text-gray-500">Review associate-submitted requests and track their outcomes.</p>
         </div>
         <Link href="/careconnect/referrals" className="text-xs text-gray-400 transition-colors hover:text-gray-600">
@@ -226,7 +226,7 @@ export default function PendingReferralRequestsPage() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-500">Loading pending requests...</td></tr>
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-500">Loading referral requests...</td></tr>
               ) : items.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-12 text-center">

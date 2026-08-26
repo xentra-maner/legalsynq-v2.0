@@ -378,6 +378,10 @@ public static class LawFirmUserManagementEndpoints
             if (membership is null)
                 return Results.NotFound(new { error = $"User '{userId}' is not an active member of organization '{organizationId}'." });
 
+            var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
+            if (user is null)
+                return Results.NotFound(new { error = $"User '{userId}' not found." });
+
             var org = await db.Organizations.AsNoTracking().FirstOrDefaultAsync(o => o.Id == organizationId, ct);
             if (org is null)
                 return Results.NotFound(new { error = $"Organization '{organizationId}' not found." });
@@ -400,6 +404,7 @@ public static class LawFirmUserManagementEndpoints
 
             var assignment = UserRoleAssignment.Create(tenantId, userId, roleCode, ProductCodes.SynqCareConnect, organizationId);
             db.UserRoleAssignments.Add(assignment);
+            user.IncrementAccessVersion();
             await db.SaveChangesAsync(ct);
 
             _ = auditClient.IngestAsync(new IngestAuditEventRequest
@@ -459,7 +464,12 @@ public static class LawFirmUserManagementEndpoints
             if (!AssignableRoleCodes.Contains(assignment.RoleCode))
                 return Results.Forbid();
 
+            var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
+            if (user is null)
+                return Results.NotFound(new { error = $"User '{userId}' not found." });
+
             assignment.Remove();
+            user.IncrementAccessVersion();
             await db.SaveChangesAsync(ct);
 
             _ = auditClient.IngestAsync(new IngestAuditEventRequest

@@ -413,7 +413,9 @@ new **internal, provisioning-token-secured** endpoints on Identity
 `Identity.Api/Endpoints/LawFirmUserManagementEndpoints.cs`), which independently
 re-validates the role allow-list and re-derives org membership rather than trusting the
 caller's check. See `HttpIdentityOrganizationService`'s law-firm-user methods for the
-CareConnect → Identity call shape.
+CareConnect → Identity call shape. Identity increments the affected user's `AccessVersion`
+when these internal role assignments are added or revoked so refreshed sessions and profile
+views stop showing stale CareConnect roles.
 
 ## Database
 

@@ -346,7 +346,14 @@ public sealed class PendingReferralRequestService : IPendingReferralRequestServi
     }
 
     public async Task<ReferralResponse> ConvertAsync(
-        Guid tenantId, Guid lawFirmOrganizationId, Guid id, Guid? userId, ConvertPendingReferralRequest request, CancellationToken ct = default)
+        Guid tenantId,
+        Guid lawFirmOrganizationId,
+        Guid id,
+        Guid? userId,
+        string? userEmail,
+        string? userName,
+        ConvertPendingReferralRequest request,
+        CancellationToken ct = default)
     {
         var item = await _pending.GetByIdAsync(tenantId, id, ct)
             ?? throw new NotFoundException($"Pending referral request '{id}' was not found.");
@@ -391,6 +398,8 @@ public sealed class PendingReferralRequestService : IPendingReferralRequestServi
                 new() { ["providerId"] = ["ProviderId or NetworkProviderId is required."] });
         }
 
+        var lawFirmName = await _identityOrganizations.GetOrganizationNameAsync(lawFirmOrganizationId, ct);
+
         Guid? orgRelationshipId = null;
         if (receivingOrganizationId.HasValue)
         {
@@ -419,6 +428,9 @@ public sealed class PendingReferralRequestService : IPendingReferralRequestServi
             notes: item.Notes,
             createdByUserId: userId,
             organizationRelationshipId: orgRelationshipId,
+            referrerEmail: userEmail,
+            referrerName: userName,
+            referrerFirmName: lawFirmName,
             treatmentTypeId: item.TreatmentTypeId,
             dateOfAccident: item.DateOfAccident,
             facilityId: facilityId,

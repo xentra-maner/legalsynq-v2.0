@@ -92,7 +92,7 @@ public static class PendingReferralRequestEndpoints
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
             var orgId = ctx.OrgId ?? throw new InvalidOperationException("org_id claim is missing.");
-            var result = await service.ConvertAsync(tenantId, orgId, id, ctx.UserId, request, ct);
+            var result = await service.ConvertAsync(tenantId, orgId, id, ctx.UserId, ctx.Email, ctx.Name, request, ct);
             return Results.Ok(result);
         })
         .RequireProductRole(ProductCodes.SynqCareConnect, LawFirmReviewerRoles);

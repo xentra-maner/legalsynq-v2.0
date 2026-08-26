@@ -114,7 +114,7 @@ function publicProviderItemToProviderSummary(
 // submit page (fetchReferralPortalPublicNetworkList), scoped server-side by organizationId.
 async function fetchNetworkList(organizationId?: string): Promise<PublicNetworkSummary[]> {
   const qs = organizationId ? `?organizationId=${encodeURIComponent(organizationId)}` : "";
-  const networksRes = await fetch(`/api/public/careconnect/api/public/network${qs}`);
+  const networksRes = await fetch(`/api/careconnect/public-network/api/public/network${qs}`);
   if (!networksRes.ok) throw new Error("Failed to load provider networks.");
   return await networksRes.json() as PublicNetworkSummary[];
 }
@@ -124,7 +124,7 @@ async function fetchNetworkList(organizationId?: string): Promise<PublicNetworkS
 // providers always appear regardless of which law firm the request belongs to.
 async function fetchNetworkProviders(networkId: string, organizationId?: string): Promise<ProviderSummary[]> {
   const qs = organizationId ? `?organizationId=${encodeURIComponent(organizationId)}` : "";
-  const detailRes = await fetch(`/api/public/careconnect/api/public/network/${networkId}/detail${qs}`);
+  const detailRes = await fetch(`/api/careconnect/public-network/api/public/network/${networkId}/detail${qs}`);
   if (!detailRes.ok) throw new Error("Failed to load provider network detail.");
   const detail = await detailRes.json() as PublicNetworkDetail;
 

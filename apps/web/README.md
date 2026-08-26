@@ -91,6 +91,10 @@ submits pending referral requests to a selected law firm; `/careconnect/pending-
 authenticated law-firm review queue where `CARECONNECT_REFERRER` users select a provider and convert
 pending requests into normal referrals. Authenticated and public referral submission forms include optional
 lien company name/email fields, and referral detail surfaces display the immutable origin and lien company data.
+When the authenticated review queue needs the public provider-network payload for final provider selection, it
+uses `/api/careconnect/public-network/*`, a read-only BFF bridge that resolves the tenant from the
+validated `platform_session` instead of the request hostname. This keeps common CareConnect portal hosts
+from being treated as tenant subdomains while preserving the CareConnect public trust-boundary headers.
 
 ## Environment
 

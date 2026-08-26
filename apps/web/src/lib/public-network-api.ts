@@ -269,8 +269,10 @@ export async function fetchPublicNetworks(
 export async function fetchPublicNetworkDetail(
   tenantId:  string,
   networkId: string,
+  organizationId?: string,
 ): Promise<PublicNetworkDetail | null> {
-  const url = `${GATEWAY_URL}/careconnect/api/public/network/${networkId}/detail`;
+  const qs = organizationId ? `?organizationId=${encodeURIComponent(organizationId)}` : "";
+  const url = `${GATEWAY_URL}/careconnect/api/public/network/${networkId}/detail${qs}`;
 
   let res: Response;
   try {

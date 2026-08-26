@@ -65,7 +65,7 @@ export async function fetchRepresentativeMetrics(code: string, from?: string, to
 
 export async function fetchRepresentativePendingRequests(
   code: string,
-  params: { from?: string; to?: string; page?: number; pageSize?: number } = {},
+  params: { from?: string; to?: string; status?: string; page?: number; pageSize?: number } = {},
 ) {
   return apiClient.get<PagedResponse<PendingReferralRequest>>(
     `${BASE}/pending-referrals${qs({ ...params, code })}`,

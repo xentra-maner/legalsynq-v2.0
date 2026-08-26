@@ -8,6 +8,21 @@ import { useRepresentativePortal } from '@/components/careconnect/representative
 import { ApiError } from '@/lib/api-client';
 import type { PendingReferralProviderPreference, PendingReferralRequest } from '@/types/careconnect';
 
+const REQUEST_STATUS: Record<string, { label: string; className: string }> = {
+  PendingReview: {
+    label: 'Pending',
+    className: 'bg-orange-100 text-orange-800 ring-orange-200',
+  },
+  Converted: {
+    label: 'Accepted',
+    className: 'bg-emerald-100 text-emerald-800 ring-emerald-200',
+  },
+  Cancelled: {
+    label: 'Declined',
+    className: 'bg-red-100 text-red-800 ring-red-200',
+  },
+};
+
 function formatDate(value?: string | null): string {
   if (!value) return 'Not available';
   const date = new Date(value);
@@ -48,6 +63,19 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
       </div>
       <dl className="grid gap-x-6 gap-y-5 px-5 py-5 sm:grid-cols-2">{children}</dl>
     </section>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const badge = REQUEST_STATUS[status] ?? {
+    label: status,
+    className: 'bg-gray-100 text-gray-700 ring-gray-200',
+  };
+
+  return (
+    <span className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ring-1 ${badge.className}`}>
+      {badge.label}
+    </span>
   );
 }
 
@@ -109,9 +137,7 @@ export default function RepresentativePendingRequestDetailPage({ params }: PageP
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="text-2xl font-semibold text-gray-900">{patientName(request)}</h1>
-                  <span className="inline-flex rounded bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-800 ring-1 ring-orange-200">
-                    Pending Request
-                  </span>
+                  <StatusBadge status={request.status} />
                 </div>
                 <p className="mt-1 text-sm text-orange-800">
                   Submitted {formatDate(request.createdAtUtc)} for {request.lawFirmName ?? 'law firm review'}.
@@ -137,7 +163,7 @@ export default function RepresentativePendingRequestDetailPage({ params }: PageP
                 <Field label="Law Firm" value={request.lawFirmName ?? 'Law firm pending'} />
                 <Field label="Urgency" value={request.urgency || 'Normal'} />
                 <Field label="Requested Service" value={request.requestedService} />
-                <Field label="Status" value="Pending Request" />
+                <Field label="Status" value={REQUEST_STATUS[request.status]?.label ?? request.status} />
               </Section>
 
               <section className="rounded-lg border border-gray-200 bg-white">

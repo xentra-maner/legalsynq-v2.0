@@ -167,6 +167,10 @@ review all stored preferences, and convert one by selecting the final provider; 
 origination/origin/lien-company fields, and blocks repeat conversion. If the law firm converts without
 selecting a different provider, the first stored preference can be used as the default conversion
 target.
+The law-firm review queue and Referral Portal request list expose outcome tabs for All, Pending,
+Accepted, and Declined requests. These map to an omitted status filter, `PendingReview`, `Converted`,
+and `Cancelled` respectively; `Cancelled` is labeled Declined because that is the state produced when a
+law-firm user declines a pending request.
 Law-firm review screens, law-firm tokenized referral status links, and law-firm/referrer notification
 email summaries display Referral Origination when it is present. Provider-facing referral emails and
 provider thread links do not.

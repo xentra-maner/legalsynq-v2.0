@@ -131,6 +131,15 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function getDateFieldError(value: string, options: { required: boolean; emptyMessage: string; futureMessage: string; badInput?: boolean }): string | null {
+  if (options.badInput) return "Please enter a valid date.";
+  if (!value) return options.required ? options.emptyMessage : null;
+  if (!isValidIsoDate(value)) return "Please enter a valid date.";
+  if (!hasReasonableYear(value)) return "Please enter a valid year (1900 or later).";
+  if (new Date(value) > new Date()) return options.futureMessage;
+  return null;
+}
+
 type ProviderPreference = Pick<ProviderSummary, "id" | "facilityId" | "displayLabel" | "markerSubtitle" | "specialties"> & {
   phone?: string | null;
 };
@@ -714,6 +723,35 @@ export default function ReferralPortalSubmitPage() {
     setFieldErrors(prev => { const n = { ...prev }; delete n[field]; return n; });
   };
 
+  const updateDate = (
+    field: "clientDob" | "dateOfAccident",
+    value: string,
+    badInput?: boolean,
+  ) => {
+    setForm(prev => ({ ...prev, [field]: value }));
+
+    const error = field === "clientDob"
+      ? getDateFieldError(value, {
+          required: true,
+          emptyMessage: "Date of birth is required.",
+          futureMessage: "Date of birth cannot be in the future.",
+          badInput,
+        })
+      : getDateFieldError(value, {
+          required: true,
+          emptyMessage: "Date of accident is required.",
+          futureMessage: "Date of accident cannot be in the future.",
+          badInput,
+        });
+
+    setFieldErrors(prev => {
+      const next = { ...prev };
+      if (error) next[field] = error;
+      else delete next[field];
+      return next;
+    });
+  };
+
   const selectedLawFirm = lawFirms.find(f => f.id === form.lawFirmOrganizationId) ?? null;
   const filteredLawFirms = useMemo(() => {
     const q = lawFirmSearch.trim().toLowerCase();
@@ -947,14 +985,18 @@ export default function ReferralPortalSubmitPage() {
       errs.clientEmail = "Enter a valid email address.";
     if (form.lienCompanyEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.lienCompanyEmail.trim()))
       errs.lienCompanyEmail = "Enter a valid lien company email address.";
-    if (!form.clientDob) errs.clientDob = "Date of birth is required.";
-    else if (!isValidIsoDate(form.clientDob)) errs.clientDob = "Enter a valid date of birth.";
-    else if (form.clientDob && !hasReasonableYear(form.clientDob)) errs.clientDob = "Please enter a valid year (1900 or later).";
-    else if (form.clientDob && new Date(form.clientDob) > new Date()) errs.clientDob = "Date of birth cannot be in the future.";
-    if (!form.dateOfAccident) errs.dateOfAccident = "Date of accident is required.";
-    else if (!isValidIsoDate(form.dateOfAccident)) errs.dateOfAccident = "Enter a valid date of accident.";
-    else if (form.dateOfAccident && !hasReasonableYear(form.dateOfAccident)) errs.dateOfAccident = "Please enter a valid year (1900 or later).";
-    else if (form.dateOfAccident && new Date(form.dateOfAccident) > new Date()) errs.dateOfAccident = "Date of accident cannot be in the future.";
+    const clientDobError = getDateFieldError(form.clientDob, {
+      required: true,
+      emptyMessage: "Date of birth is required.",
+      futureMessage: "Date of birth cannot be in the future.",
+    });
+    if (clientDobError) errs.clientDob = clientDobError;
+    const dateOfAccidentError = getDateFieldError(form.dateOfAccident, {
+      required: true,
+      emptyMessage: "Date of accident is required.",
+      futureMessage: "Date of accident cannot be in the future.",
+    });
+    if (dateOfAccidentError) errs.dateOfAccident = dateOfAccidentError;
     return errs;
   }
 
@@ -1130,28 +1172,34 @@ export default function ReferralPortalSubmitPage() {
               {fieldErrors.clientEmail && <p className="mt-1 text-xs text-red-600">{fieldErrors.clientEmail}</p>}
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Date of birth <span className="text-red-500">*</span></label>
+              <label htmlFor="clientDob" className="block text-sm font-medium text-gray-700 mb-1">Date of birth <span className="text-red-500">*</span></label>
               <input
+                id="clientDob"
                 type="date" value={form.clientDob}
                 min="1900-01-01" max={TODAY}
                 required
-                onChange={e => update("clientDob", e.target.value)}
+                onChange={e => updateDate("clientDob", e.target.value, e.currentTarget.validity.badInput)}
                 disabled={submitting}
+                aria-invalid={!!fieldErrors.clientDob}
+                aria-describedby={fieldErrors.clientDob ? "clientDob-error" : undefined}
                 className={inputCls(!!fieldErrors.clientDob)}
               />
-              {fieldErrors.clientDob && <p className="mt-1 text-xs text-red-600">{fieldErrors.clientDob}</p>}
+              {fieldErrors.clientDob && <p id="clientDob-error" className="mt-1 text-xs text-red-600">{fieldErrors.clientDob}</p>}
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Date of accident <span className="text-red-500">*</span></label>
+              <label htmlFor="dateOfAccident" className="block text-sm font-medium text-gray-700 mb-1">Date of accident <span className="text-red-500">*</span></label>
               <input
+                id="dateOfAccident"
                 type="date" value={form.dateOfAccident}
                 min="1900-01-01" max={TODAY}
                 required
-                onChange={e => update("dateOfAccident", e.target.value)}
+                onChange={e => updateDate("dateOfAccident", e.target.value, e.currentTarget.validity.badInput)}
                 disabled={submitting}
+                aria-invalid={!!fieldErrors.dateOfAccident}
+                aria-describedby={fieldErrors.dateOfAccident ? "dateOfAccident-error" : undefined}
                 className={inputCls(!!fieldErrors.dateOfAccident)}
               />
-              {fieldErrors.dateOfAccident && <p className="mt-1 text-xs text-red-600">{fieldErrors.dateOfAccident}</p>}
+              {fieldErrors.dateOfAccident && <p id="dateOfAccident-error" className="mt-1 text-xs text-red-600">{fieldErrors.dateOfAccident}</p>}
             </div>
           </div>
         </fieldset>

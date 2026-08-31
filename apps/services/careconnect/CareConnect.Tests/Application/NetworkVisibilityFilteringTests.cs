@@ -14,13 +14,16 @@ namespace CareConnect.Tests.Application;
 // platform admin / NetworkManager).
 public class NetworkVisibilityFilteringTests
 {
-    private static NetworkService BuildSut(INetworkRepository networks) =>
+    private static NetworkService BuildSut(
+        INetworkRepository networks,
+        IIdentityOrganizationService? identityOrganizations = null) =>
         new(
             networks,
             Mock.Of<ICategoryRepository>(),
             Mock.Of<ISpecialtyRepository>(),
             Mock.Of<IProviderImportParser>(),
-            NullLogger<NetworkService>.Instance);
+            NullLogger<NetworkService>.Instance,
+            identityOrganizations);
 
     private static (Provider Provider, Facility Facility, NetworkProvider Membership) BuildMembership(
         Guid tenantId, Guid networkId, string visibility, Guid? owningOrganizationId)
@@ -88,6 +91,31 @@ public class NetworkVisibilityFilteringTests
             callerOrgId: ownerOrgId, isTenantAdmin: false, isNetworkManager: false);
 
         Assert.Single(result.Providers);
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_VisibleProvider_ReturnsCreatedByLawFirmName()
+    {
+        var tenantId = Guid.CreateVersion7();
+        var networkId = Guid.CreateVersion7();
+        var ownerOrgId = Guid.CreateVersion7();
+        var (_, _, membership) = BuildMembership(tenantId, networkId, ProviderVisibility.Private, ownerOrgId);
+        var network = ProviderNetwork.Create(tenantId, "Network", string.Empty);
+        SetNavigation(network, nameof(ProviderNetwork.NetworkProviders), new List<NetworkProvider> { membership });
+
+        var networks = new Mock<INetworkRepository>();
+        networks.Setup(r => r.GetWithProvidersAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(network);
+
+        var identity = new Mock<IIdentityOrganizationService>();
+        identity.Setup(s => s.GetOrganizationNameAsync(ownerOrgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("Acme Law Group");
+
+        var sut = BuildSut(networks.Object, identity.Object);
+        var result = await sut.GetByIdAsync(tenantId, networkId, default,
+            callerOrgId: ownerOrgId, isTenantAdmin: false, isNetworkManager: false);
+
+        Assert.Equal("Acme Law Group", result.Providers.Single().CreatedByLawFirm);
     }
 
     [Fact]

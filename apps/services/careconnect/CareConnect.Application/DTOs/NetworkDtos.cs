@@ -58,7 +58,8 @@ public sealed record NetworkProviderItem(
     bool   FacilityIsActive = true,
     bool    IsMobile = false,
     double? ServiceRadiusMiles = null,
-    string? ServiceAreaLabel = null);
+    string? ServiceAreaLabel = null,
+    string? CreatedByLawFirm = null);
 
 // ── Map markers ───────────────────────────────────────────────────────────────
 

@@ -131,6 +131,10 @@ function splitProviderName(name: string): {
   return { title, firstName: parts.slice(0, -1).join(" "), lastName: parts[parts.length - 1] ?? "" };
 }
 
+function createdByLawFirmLabel(provider: Pick<NetworkProviderItem, "createdByLawFirm">): string {
+  return provider.createdByLawFirm?.trim() || "N/A";
+}
+
 interface ProviderEditModalProps {
   network: NetworkDetail;
   provider: NetworkProviderItem | null;
@@ -530,6 +534,11 @@ export function ProviderEditModal({
                 {setupForm.visibility === "Public" ? "Public" : "Private"}
               </span>
             )}
+          </div>
+
+          <div className="rounded-lg border border-neutral-200 bg-white px-4 py-3">
+            <p className="text-sm font-medium text-neutral-950">Created By Law Firm</p>
+            <p className="mt-0.5 text-sm text-gray-600">{createdByLawFirmLabel(provider)}</p>
           </div>
 
           <div className="space-y-3">

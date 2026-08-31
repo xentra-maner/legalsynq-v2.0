@@ -172,6 +172,39 @@ describe('MyNetworkClient', () => {
     expect(screen.queryByText(/\+\d+/)).not.toBeInTheDocument();
   });
 
+  test('renders created by law firm only in the edit provider modal', async () => {
+    const user = userEvent.setup();
+    render(
+      <MyNetworkClient
+        initialNetwork={makeNetwork([
+          { ...BASE_PROVIDER, createdByLawFirm: 'Acme Law Group' },
+          { ...BASE_PROVIDER, id: 'network-provider-2', networkProviderId: 'network-provider-2', providerId: 'provider-2', facilityId: 'facility-2', createdByLawFirm: null },
+        ])}
+        fetchError={null}
+        specialtyOptions={SPECIALTIES}
+        tenantName="Test Tenant"
+        canManageAll
+        canManageVisibility
+        canAddProviders
+      />,
+    );
+
+    expect(screen.queryByText('Created By Law Firm')).not.toBeInTheDocument();
+    expect(screen.queryByText('Acme Law Group')).not.toBeInTheDocument();
+
+    await user.click(screen.getAllByTitle('Edit provider')[0]);
+
+    expect(screen.getByText('Created By Law Firm')).toBeInTheDocument();
+    expect(screen.getByText('Acme Law Group')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Close dialog' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await user.click(screen.getAllByTitle('Edit provider')[1]);
+
+    expect(screen.getByText('Created By Law Firm')).toBeInTheDocument();
+    expect(screen.getByText('N/A')).toBeInTheDocument();
+  });
+
   test('requires a specialty before creating a provider and submits selected specialty codes', async () => {
     const user = userEvent.setup();
     vi.mocked(careConnectApi.networks.addProvider).mockResolvedValue(ok({

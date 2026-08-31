@@ -17,19 +17,22 @@ public class NetworkService : INetworkService
     private readonly ISpecialtyRepository _specialties;
     private readonly IProviderImportParser _providerImportParser;
     private readonly ILogger<NetworkService> _logger;
+    private readonly IIdentityOrganizationService? _identityOrganizations;
 
     public NetworkService(
         INetworkRepository networks,
         ICategoryRepository categories,
         ISpecialtyRepository specialties,
         IProviderImportParser providerImportParser,
-        ILogger<NetworkService> logger)
+        ILogger<NetworkService> logger,
+        IIdentityOrganizationService? identityOrganizations = null)
     {
         _networks = networks;
         _categories = categories;
         _specialties = specialties;
         _providerImportParser = providerImportParser;
         _logger = logger;
+        _identityOrganizations = identityOrganizations;
     }
 
     // ── Network CRUD ─────────────────────────────────────────────────────────
@@ -65,7 +68,7 @@ public class NetworkService : INetworkService
         var network = await _networks.GetWithProvidersAsync(tenantId, id, ct)
             ?? throw new NotFoundException($"Network {id} not found.");
 
-        return ToDetail(network, callerOrgId, isTenantAdmin || isNetworkManager);
+        return await ToDetailAsync(network, callerOrgId, isTenantAdmin || isNetworkManager, ct);
     }
 
     private const string TenantNetworkDefaultName = "Provider Network";
@@ -502,8 +505,12 @@ public class NetworkService : INetworkService
         // facility variables — those can be missing just-synced specialties (see the comment
         // on GetMembershipAsync's include list).
         return loaded is not null
-            ? ToProviderItem(loaded)
-            : ToProviderItem(existing ?? NetworkProvider.Create(tenantId, networkId, provider.Id, facility.Id, isActive, acceptingReferrals, owningOrganizationId, visibility), provider, facility);
+            ? await ToProviderItemAsync(loaded, ct)
+            : ToProviderItem(
+                existing ?? NetworkProvider.Create(tenantId, networkId, provider.Id, facility.Id, isActive, acceptingReferrals, owningOrganizationId, visibility),
+                provider,
+                facility,
+                await ResolveCreatedByLawFirmNameAsync(existing?.OwningOrganizationId ?? owningOrganizationId, ct));
     }
 
     public async Task RemoveProviderAsync(
@@ -698,7 +705,9 @@ public class NetworkService : INetworkService
         await _networks.SaveChangesAsync(ct);
 
         var loaded = await _networks.GetMembershipByIdOrProviderAsync(networkId, membership.Id, ct);
-        return loaded is not null ? ToProviderItem(loaded) : ToProviderItem(membership, provider, facility);
+        return loaded is not null
+            ? await ToProviderItemAsync(loaded, ct)
+            : ToProviderItem(membership, provider, facility, await ResolveCreatedByLawFirmNameAsync(membership.OwningOrganizationId, ct));
     }
 
     // ── Mapping helpers ───────────────────────────────────────────────────────
@@ -713,24 +722,45 @@ public class NetworkService : INetworkService
     private static NetworkSummaryResponse ToSummary(ProviderNetwork n, int providerCount) =>
         new(n.Id, n.Name, n.Description, providerCount, n.CreatedAtUtc, n.UpdatedAtUtc, n.OwningOrganizationId);
 
-    private static NetworkDetailResponse ToDetail(ProviderNetwork n, Guid? viewerOrgId, bool viewerSeesAll) =>
-        new(
+    private async Task<NetworkDetailResponse> ToDetailAsync(
+        ProviderNetwork n,
+        Guid? viewerOrgId,
+        bool viewerSeesAll,
+        CancellationToken ct)
+    {
+        var visibleProviders = n.NetworkProviders
+            .Where(IsActiveMembership)
+            .Where(np => ProviderVisibility.IsVisibleTo(np, viewerOrgId, viewerSeesAll))
+            .ToList();
+        var lawFirmNames = await ResolveCreatedByLawFirmNamesAsync(visibleProviders, ct);
+
+        return new(
             n.Id,
             n.Name,
             n.Description,
-            n.NetworkProviders
-                .Where(IsActiveMembership)
-                .Where(np => ProviderVisibility.IsVisibleTo(np, viewerOrgId, viewerSeesAll))
-                .Select(ToProviderItem)
+            visibleProviders
+                .Select(np => ToProviderItem(
+                    np,
+                    np.Provider,
+                    np.Facility,
+                    lawFirmNames.GetValueOrDefault(np.OwningOrganizationId ?? Guid.Empty)))
                 .ToList(),
             n.CreatedAtUtc,
             n.UpdatedAtUtc,
             n.OwningOrganizationId);
+    }
 
     private static NetworkProviderItem ToProviderItem(NetworkProvider np)
         => ToProviderItem(np, np.Provider, np.Facility);
 
-    private static NetworkProviderItem ToProviderItem(NetworkProvider np, Provider p, Facility f)
+    private async Task<NetworkProviderItem> ToProviderItemAsync(NetworkProvider np, CancellationToken ct)
+        => ToProviderItem(np, np.Provider, np.Facility, await ResolveCreatedByLawFirmNameAsync(np.OwningOrganizationId, ct));
+
+    private static NetworkProviderItem ToProviderItem(
+        NetworkProvider np,
+        Provider p,
+        Facility f,
+        string? createdByLawFirm = null)
     {
         var specialties = MapSpecialties(p.ProviderSpecialties);
         var primarySpecialty = specialties.FirstOrDefault();
@@ -743,7 +773,40 @@ public class NetworkService : INetworkService
             f.IsActive,
             f.IsMobile,
             f.ServiceRadiusMiles,
-            f.IsMobile ? f.AddressLine1 : null);
+            f.IsMobile ? f.AddressLine1 : null,
+            createdByLawFirm);
+    }
+
+    private async Task<Dictionary<Guid, string>> ResolveCreatedByLawFirmNamesAsync(
+        IEnumerable<NetworkProvider> memberships,
+        CancellationToken ct)
+    {
+        if (_identityOrganizations is null)
+            return [];
+
+        var names = new Dictionary<Guid, string>();
+        foreach (var orgId in memberships
+            .Select(np => np.OwningOrganizationId)
+            .Where(id => id.HasValue && id.Value != Guid.Empty)
+            .Select(id => id!.Value)
+            .Distinct())
+        {
+            var name = await _identityOrganizations.GetOrganizationNameAsync(orgId, ct);
+            if (!string.IsNullOrWhiteSpace(name))
+                names[orgId] = name;
+        }
+
+        return names;
+    }
+
+    private async Task<string?> ResolveCreatedByLawFirmNameAsync(Guid? owningOrganizationId, CancellationToken ct)
+    {
+        if (_identityOrganizations is null
+            || !owningOrganizationId.HasValue
+            || owningOrganizationId.Value == Guid.Empty)
+            return null;
+
+        return await _identityOrganizations.GetOrganizationNameAsync(owningOrganizationId.Value, ct);
     }
 
     private static IEnumerable<ProviderSearchResult> ToSearchResults(Provider p)

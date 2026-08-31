@@ -1064,6 +1064,7 @@ export interface NetworkProviderItem {
   isActive:          boolean;
   acceptingReferrals: boolean;
   owningOrganizationId?: string | null;
+  createdByLawFirm?: string | null;
   visibility:        string;
   /**
    * Whether the underlying cc_Facilities row is active. Distinct from `isActive` above (the

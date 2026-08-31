@@ -89,6 +89,10 @@ public class RepresentativeReferralMetricsResponse
     public int TotalAttributedReferrals { get; set; }
     /// <summary>Referral portal submissions awaiting law firm review before provider routing.</summary>
     public int PendingRequestReferrals { get; set; }
+    /// <summary>Referral portal submissions accepted by the law firm and converted to routed referrals.</summary>
+    public int AcceptedRequestReferrals { get; set; }
+    /// <summary>Referral portal submissions declined by the law firm before provider routing.</summary>
+    public int DeclinedRequestReferrals { get; set; }
     /// <summary>New or NewOpened — not yet accepted by the provider.</summary>
     public int PendingReferrals { get; set; }
     /// <summary>Accepted or InProgress — accepted by the provider, not yet resolved.</summary>

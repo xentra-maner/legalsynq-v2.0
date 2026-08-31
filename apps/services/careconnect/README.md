@@ -171,6 +171,9 @@ The law-firm review queue and Referral Portal request list are labeled Referral 
 expose outcome tabs for All, Pending, Accepted, and Declined requests. These map to an omitted status
 filter, `PendingReview`, `Converted`, and `Cancelled` respectively; `Cancelled` is labeled Declined
 because that is the state produced when a law-firm user declines a pending request.
+The Referral Origination dashboard keeps request outcomes separate from converted referral statuses:
+its Referral Requests breakdown counts `PendingReview`, `Converted`, and `Cancelled` requests, while
+its Converted Referrals breakdown counts the routed referral's provider-facing lifecycle status.
 Law-firm review screens, law-firm tokenized referral status links, and law-firm/referrer notification
 email summaries display Referral Origination when it is present. Provider-facing referral emails and
 provider thread links do not.

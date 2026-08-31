@@ -38,8 +38,13 @@ const STATUS_TONES: Record<string, string> = {
   Cancelled: 'bg-gray-100 text-gray-700 ring-gray-200',
 };
 
-const STATUS_BAR = [
+const REQUEST_STATUS_BAR = [
   { key: 'pendingRequest', label: 'Pending Request', color: 'bg-orange-500' },
+  { key: 'acceptedRequest', label: 'Accepted Request', color: 'bg-teal-500' },
+  { key: 'declinedRequest', label: 'Declined Request', color: 'bg-rose-500' },
+] as const;
+
+const CONVERTED_REFERRAL_STATUS_BAR = [
   { key: 'pending', label: 'Pending', color: 'bg-amber-500' },
   { key: 'accepted', label: 'Accepted', color: 'bg-blue-500' },
   { key: 'completed', label: 'Completed', color: 'bg-emerald-500' },
@@ -141,6 +146,55 @@ function Panel({
   );
 }
 
+function BreakdownPanel<T extends string>({
+  title,
+  items,
+  counts,
+  emptyLabel,
+}: {
+  title: string;
+  items: readonly { key: T; label: string; color: string }[];
+  counts: Record<T, number>;
+  emptyLabel: string;
+}) {
+  const total = items.reduce((sum, item) => sum + counts[item.key], 0);
+
+  return (
+    <Panel title={title}>
+      {total === 0 ? (
+        <p className="text-sm text-gray-500">{emptyLabel}</p>
+      ) : (
+        <>
+          <div className="flex h-2 overflow-hidden rounded-full bg-gray-100">
+            {items.map(segment => {
+              const value = counts[segment.key];
+              if (value <= 0) return null;
+              return (
+                <div
+                  key={segment.key}
+                  className={segment.color}
+                  style={{ width: `${Math.max(4, (value / total) * 100)}%` }}
+                />
+              );
+            })}
+          </div>
+          <div className="mt-4 space-y-3">
+            {items.map(segment => (
+              <div key={segment.key} className="flex items-center justify-between gap-3 text-sm">
+                <span className="flex items-center gap-2 text-gray-600">
+                  <span className={`h-2.5 w-2.5 rounded-full ${segment.color}`} />
+                  {segment.label}
+                </span>
+                <span className="font-semibold text-gray-950">{counts[segment.key].toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </Panel>
+  );
+}
+
 export default function RepresentativeDashboardPage() {
   const { code } = useRepresentativePortal();
   const [preset, setPreset] = useState<DatePreset>('30d');
@@ -148,25 +202,29 @@ export default function RepresentativeDashboardPage() {
   const [metrics, setMetrics] = useState<RepresentativeReferralMetrics | null>(null);
   const [pendingRequests, setPendingRequests] = useState<PendingReferralRequest[]>([]);
   const [recentReferrals, setRecentReferrals] = useState<RepresentativeReferralListItem[]>([]);
-  const [totalPendingRequests, setTotalPendingRequests] = useState(0);
   const [totalRecent, setTotalRecent] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const pendingRequestCount = asCount(metrics?.pendingRequestReferrals ?? metrics?.pendingReviewReferrals);
+  const acceptedRequestCount = asCount(metrics?.acceptedRequestReferrals);
+  const declinedRequestCount = asCount(metrics?.declinedRequestReferrals);
   const totalAttributed = asCount(metrics?.totalAttributedReferrals);
-  const totalVisible = totalAttributed + pendingRequestCount;
+  const totalVisible = totalAttributed + pendingRequestCount + acceptedRequestCount + declinedRequestCount;
 
-  const statusCounts = useMemo(() => ({
+  const requestStatusCounts = useMemo(() => ({
     pendingRequest: pendingRequestCount,
+    acceptedRequest: acceptedRequestCount,
+    declinedRequest: declinedRequestCount,
+  }), [pendingRequestCount, acceptedRequestCount, declinedRequestCount]);
+
+  const convertedReferralStatusCounts = useMemo(() => ({
     pending: asCount(metrics?.pendingReferrals),
     accepted: asCount(metrics?.acceptedReferrals),
     completed: asCount(metrics?.completedReferrals),
     declined: asCount(metrics?.declinedReferrals),
     cancelled: asCount(metrics?.cancelledReferrals),
-  }), [metrics, pendingRequestCount]);
-
-  const statusTotal = Object.values(statusCounts).reduce((sum, value) => sum + value, 0);
+  }), [metrics]);
 
   useEffect(() => {
     let cancelled = false;
@@ -177,6 +235,7 @@ export default function RepresentativeDashboardPage() {
       fetchRepresentativePendingRequests(code, {
         from: from || undefined,
         to: to || undefined,
+        status: 'PendingReview',
         page: 1,
         pageSize: 3,
       }),
@@ -191,7 +250,6 @@ export default function RepresentativeDashboardPage() {
         if (cancelled) return;
         setMetrics(metricsResult.data);
         setPendingRequests(pendingRequestsResult.data.items);
-        setTotalPendingRequests(pendingRequestsResult.data.totalCount);
         setRecentReferrals(referralsResult.data.items);
         setTotalRecent(referralsResult.data.totalCount);
         setError(null);
@@ -278,7 +336,7 @@ export default function RepresentativeDashboardPage() {
             <KpiCard
               label="Total activity"
               value={totalVisible}
-              detail="Pending requests plus routed referrals"
+              detail="Request outcomes plus routed referrals"
               icon={Activity}
               tone="bg-gray-100 text-gray-700"
             />
@@ -416,38 +474,19 @@ export default function RepresentativeDashboardPage() {
                 )}
               </Panel>
 
-              <Panel title="Status Breakdown">
-                {statusTotal === 0 ? (
-                  <p className="text-sm text-gray-500">No activity in this range.</p>
-                ) : (
-                  <>
-                    <div className="flex h-2 overflow-hidden rounded-full bg-gray-100">
-                      {STATUS_BAR.map(segment => {
-                        const value = statusCounts[segment.key];
-                        if (value <= 0) return null;
-                        return (
-                          <div
-                            key={segment.key}
-                            className={segment.color}
-                            style={{ width: `${Math.max(4, (value / statusTotal) * 100)}%` }}
-                          />
-                        );
-                      })}
-                    </div>
-                    <div className="mt-4 space-y-3">
-                      {STATUS_BAR.map(segment => (
-                        <div key={segment.key} className="flex items-center justify-between gap-3 text-sm">
-                          <span className="flex items-center gap-2 text-gray-600">
-                            <span className={`h-2.5 w-2.5 rounded-full ${segment.color}`} />
-                            {segment.label}
-                          </span>
-                          <span className="font-semibold text-gray-950">{statusCounts[segment.key].toLocaleString()}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </Panel>
+              <BreakdownPanel
+                title="Referral Requests"
+                items={REQUEST_STATUS_BAR}
+                counts={requestStatusCounts}
+                emptyLabel="No request activity in this range."
+              />
+
+              <BreakdownPanel
+                title="Converted Referrals"
+                items={CONVERTED_REFERRAL_STATUS_BAR}
+                counts={convertedReferralStatusCounts}
+                emptyLabel="No converted referrals in this range."
+              />
             </div>
           </div>
         </>

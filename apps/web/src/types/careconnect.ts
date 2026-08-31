@@ -340,6 +340,8 @@ export interface RepresentativeReferralMetrics {
   totalAttributedReferrals: number;
   pendingRequestReferrals:  number;
   pendingReviewReferrals?:  number;
+  acceptedRequestReferrals?: number;
+  declinedRequestReferrals?: number;
   pendingReferrals:         number;
   acceptedReferrals:        number;
   declinedReferrals:        number;

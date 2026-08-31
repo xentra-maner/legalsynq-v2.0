@@ -92,11 +92,27 @@ public class RepresentativeReferralService : IRepresentativeReferralService
             from,
             to,
             ct);
+        var acceptedRequestReferrals = await _pendingReferralRequests.CountForAttributionAsync(
+            tenantId,
+            referralAttributionId,
+            PendingReferralRequest.Statuses.Converted,
+            from,
+            to,
+            ct);
+        var declinedRequestReferrals = await _pendingReferralRequests.CountForAttributionAsync(
+            tenantId,
+            referralAttributionId,
+            PendingReferralRequest.Statuses.Cancelled,
+            from,
+            to,
+            ct);
 
         return new RepresentativeReferralMetricsResponse
         {
             TotalAttributedReferrals = inRangeItems.Count,
             PendingRequestReferrals = pendingRequestReferrals,
+            AcceptedRequestReferrals = acceptedRequestReferrals,
+            DeclinedRequestReferrals = declinedRequestReferrals,
             PendingReferrals = inRangeItems.Count(r => IsPending(r.Status)),
             AcceptedReferrals = inRangeItems.Count(r => IsAccepted(r.Status)),
             DeclinedReferrals = inRangeItems.Count(r => r.Status == Referral.ValidStatuses.Declined),

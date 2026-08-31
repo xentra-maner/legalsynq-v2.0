@@ -18,7 +18,8 @@ export const dynamic = 'force-dynamic';
  * (careconnect/my-network — NetworkManager/admin audience) so that page's
  * behavior stays unchanged for its existing users. Reuses MyNetworkClient
  * (same list/cards/map views, Add Provider modal, edit modal, visibility
- * badges) mounted under a law-firm-facing label and route.
+ * badges) mounted under a law-firm-facing label and route, scoped to providers
+ * owned by the caller's organization.
  */
 export default async function NetworkSetupPage() {
   const session = await requireOrg();
@@ -73,10 +74,12 @@ export default async function NetworkSetupPage() {
         fetchError={fetchError}
         specialtyOptions={specialtyOptions}
         tenantName={tenantName}
+        headerLabel="Network Setup"
         canManageAll={canManageAll}
         canManageVisibility={canManageVisibility}
         canAddProviders={canAddProviders}
         callerOrgId={session.orgId ?? null}
+        showOnlyCallerOrgProviders
         showNetworkUrl={false}
       />
     </div>

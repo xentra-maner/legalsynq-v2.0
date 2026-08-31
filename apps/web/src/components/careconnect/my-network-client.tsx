@@ -51,8 +51,10 @@ interface MyNetworkClientProps {
   initialNetwork: NetworkDetail | null;
   fetchError: string | null;
   specialtyOptions: SpecialtyOption[];
-  /** LSV3-1084: tenant display name used for the "{tenantName} Preferred Providers" heading. */
+  /** LSV3-1084: tenant display name used for the tenant-owned network fallback heading. */
   tenantName: string;
+  /** Optional screen-level heading override. */
+  headerLabel?: string;
   /** True for NetworkManager / TenantAdmin / PlatformAdmin — can edit/remove any provider. */
   canManageAll: boolean;
   /** 4-AC3: True only for TenantAdmin / PlatformAdmin — can toggle a provider's Public/Private visibility. */
@@ -61,6 +63,8 @@ interface MyNetworkClientProps {
   canAddProviders: boolean;
   /** The caller's own organization id — a CareConnectReferrerAdmin without canManageAll may only edit/remove providers their org added. */
   callerOrgId?: string | null;
+  /** When true, only provider rows owned by the caller's organization are shown. */
+  showOnlyCallerOrgProviders?: boolean;
   /** True on the tenant portal's "My Network" screen (NetworkManager audience) — shows the public network URL. False on the law firm "Network Setup" screen, which doesn't need it. */
   showNetworkUrl?: boolean;
 }
@@ -169,10 +173,12 @@ export function MyNetworkClient({
   fetchError,
   specialtyOptions,
   tenantName,
+  headerLabel,
   canManageAll,
   canManageVisibility,
   canAddProviders,
   callerOrgId,
+  showOnlyCallerOrgProviders = false,
   showNetworkUrl = true,
 }: MyNetworkClientProps) {
   const [network, setNetwork] = useState<NetworkDetail | null>(initialNetwork);
@@ -249,6 +255,14 @@ export function MyNetworkClient({
       !(Number(newForm.serviceRadiusMiles) > 0) ||
       Number(newForm.serviceRadiusMiles) > MAX_SERVICE_RADIUS_MILES);
   const hasNoSpecialty = newForm.specialtyIds.length === 0;
+  const providerBelongsToCaller = (provider: NetworkProviderItem): boolean =>
+    !showOnlyCallerOrgProviders ||
+    (!!callerOrgId && provider.owningOrganizationId === callerOrgId);
+  const visibleProviderKeys = new Set(
+    providers
+      .filter((p) => p.facilityIsActive && providerBelongsToCaller(p))
+      .map(networkProviderEntryId),
+  );
   useEffect(() => {
     if (showNetworkUrl) setNetworkUrl(window.location.origin + "/careconnect/network");
   }, [showNetworkUrl]);
@@ -348,7 +362,9 @@ export function MyNetworkClient({
           }),
         );
 
-        setMarkers(enriched);
+        setMarkers(
+          enriched.filter((m) => visibleProviderKeys.has(networkProviderEntryId(m))),
+        );
         setMarkersLoaded(true);
       } catch {
         showToast("Could not load map data. Please try again.");
@@ -875,7 +891,9 @@ export function MyNetworkClient({
   // Facilities-panel logic can still reference them — the visible list itself hides only
   // truly deleted locations, not ones merely toggled inactive via the separate Active
   // checkbox (`isActive`, the NetworkProvider membership's own status).
-  const visibleProviders = providers.filter((p) => p.facilityIsActive);
+  const visibleProviders = providers.filter(
+    (p) => p.facilityIsActive && providerBelongsToCaller(p),
+  );
 
   // ── Render: no network yet ───────────────────────────────────────────────
 
@@ -947,7 +965,7 @@ export function MyNetworkClient({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-3">
             <h1 className="text-xl font-semibold text-gray-900">
-              {networkDisplayName(network, tenantName)}
+              {headerLabel ?? networkDisplayName(network, tenantName)}
             </h1>
             <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700 border border-blue-200">
               {visibleProviders.length}{" "}

@@ -196,9 +196,10 @@ carve-out anymore). The frontend's separate "Networks" (list of networks) admin 
 Two role-scoped screens share the same `MyNetworkClient` component against this one network: "My Network"
 (`/careconnect/my-network`, tenant portal, `CARECONNECT_NETWORK_MANAGER`/admin — unchanged from before the
 cutover, includes the public Network URL box) and "Network Setup" (`/careconnect/network-setup`,
-`CARECONNECT_REFERRER_ADMIN`/law-firm — no Network URL box, since that's a tenant-level concern, not a
-per-law-firm one). They were deliberately kept as two separate routes/nav entries rather than merged into
-one, so the existing NetworkManager-facing screen's behavior stays untouched for its current users.
+`CARECONNECT_REFERRER_ADMIN`/law-firm — labelled "Network Setup", scoped to providers owned by the
+law firm's organization, and no Network URL box, since that's a tenant-level concern, not a per-law-firm
+one). They were deliberately kept as two separate routes/nav entries rather than merged into one, so the
+existing NetworkManager-facing screen's behavior stays untouched for its current users.
 
 Per-provider ownership and visibility (`NetworkProvider.OwningOrganizationId`/`Visibility`) are now the
 *sole* mechanism for "whose provider is this" and "who can see it" — and, critically, `Visibility` is

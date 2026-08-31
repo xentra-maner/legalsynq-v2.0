@@ -757,6 +757,68 @@ describe('MyNetworkClient', () => {
     expect(screen.queryByText('Demo network')).not.toBeInTheDocument();
   });
 
+  test('LSV3-1213: supports Network Setup heading override', () => {
+    render(
+      <MyNetworkClient
+        initialNetwork={makeNetwork([BASE_PROVIDER])}
+        fetchError={null}
+        specialtyOptions={SPECIALTIES}
+        tenantName="Acme Law"
+        headerLabel="Network Setup"
+        canManageAll={false}
+        canManageVisibility={false}
+        canAddProviders
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Network Setup' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Acme Law Preferred Providers' })).not.toBeInTheDocument();
+  });
+
+  test("LSV3-1213: Network Setup can show only the caller organization's providers", () => {
+    render(
+      <MyNetworkClient
+        initialNetwork={makeNetwork([
+          { ...BASE_PROVIDER, owningOrganizationId: 'my-org' },
+          {
+            ...BASE_PROVIDER,
+            id: 'network-provider-2',
+            networkProviderId: 'network-provider-2',
+            providerId: 'provider-2',
+            facilityId: 'facility-2',
+            name: 'Other Network Provider',
+            facilityName: 'Other Network Provider',
+            owningOrganizationId: 'other-org',
+          },
+          {
+            ...BASE_PROVIDER,
+            id: 'network-provider-3',
+            networkProviderId: 'network-provider-3',
+            providerId: 'provider-3',
+            facilityId: 'facility-3',
+            name: 'Tenant Network Provider',
+            facilityName: 'Tenant Network Provider',
+            owningOrganizationId: null,
+          },
+        ])}
+        fetchError={null}
+        specialtyOptions={SPECIALTIES}
+        tenantName="Acme Law"
+        headerLabel="Network Setup"
+        canManageAll={false}
+        canManageVisibility={false}
+        canAddProviders
+        callerOrgId="my-org"
+        showOnlyCallerOrgProviders
+      />,
+    );
+
+    expect(screen.getByText('Atlas Rehab')).toBeInTheDocument();
+    expect(screen.queryByText('Other Network Provider')).not.toBeInTheDocument();
+    expect(screen.queryByText('Tenant Network Provider')).not.toBeInTheDocument();
+    expect(screen.getAllByText('1 provider')).toHaveLength(2);
+  });
+
   test('LSV3-1084: hides edit/remove actions for providers the caller does not own when canManageAll is false', () => {
     render(
       <MyNetworkClient

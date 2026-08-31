@@ -374,6 +374,61 @@ public sealed class ReferralRepositorySearchTests
         Assert.Single(result.Items);
     }
 
+    [Fact]
+    public async Task SearchAsync_DateOnlyCreatedToIncludesEntireSelectedDay()
+    {
+        await using var db = CreateDbContext();
+        var tenantId = Guid.CreateVersion7();
+        var provider = CreateProvider(tenantId);
+
+        var august31Referral = CreateReferral(tenantId, provider.Id, "August", "Client");
+        var september1Referral = CreateReferral(tenantId, provider.Id, "September", "Client");
+        SetCreatedAtUtc(august31Referral, new DateTime(2026, 8, 31, 12, 30, 0, DateTimeKind.Utc));
+        SetCreatedAtUtc(september1Referral, new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc));
+
+        db.Providers.Add(provider);
+        db.Referrals.AddRange(august31Referral, september1Referral);
+        await db.SaveChangesAsync();
+
+        var repository = new ReferralRepository(db);
+
+        var result = await repository.SearchAsync(tenantId, new GetReferralsQuery
+        {
+            CreatedFrom = new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc),
+            CreatedTo = new DateTime(2026, 8, 31, 0, 0, 0, DateTimeKind.Utc),
+        });
+
+        var referral = Assert.Single(result.Items);
+        Assert.Equal(august31Referral.Id, referral.Id);
+    }
+
+    [Fact]
+    public async Task SearchAsync_TimestampCreatedToKeepsExactUpperBound()
+    {
+        await using var db = CreateDbContext();
+        var tenantId = Guid.CreateVersion7();
+        var provider = CreateProvider(tenantId);
+
+        var beforeUpperBoundReferral = CreateReferral(tenantId, provider.Id, "Before", "Client");
+        var afterUpperBoundReferral = CreateReferral(tenantId, provider.Id, "After", "Client");
+        SetCreatedAtUtc(beforeUpperBoundReferral, new DateTime(2026, 8, 31, 12, 30, 0, DateTimeKind.Utc));
+        SetCreatedAtUtc(afterUpperBoundReferral, new DateTime(2026, 8, 31, 12, 30, 1, DateTimeKind.Utc));
+
+        db.Providers.Add(provider);
+        db.Referrals.AddRange(beforeUpperBoundReferral, afterUpperBoundReferral);
+        await db.SaveChangesAsync();
+
+        var repository = new ReferralRepository(db);
+
+        var result = await repository.SearchAsync(tenantId, new GetReferralsQuery
+        {
+            CreatedTo = new DateTime(2026, 8, 31, 12, 30, 0, DateTimeKind.Utc),
+        });
+
+        var referral = Assert.Single(result.Items);
+        Assert.Equal(beforeUpperBoundReferral.Id, referral.Id);
+    }
+
     private static CareConnectDbContext CreateDbContext()
     {
         var options = new DbContextOptionsBuilder<CareConnectDbContext>()
@@ -382,4 +437,44 @@ public sealed class ReferralRepositorySearchTests
 
         return new CareConnectDbContext(options);
     }
+
+    private static Provider CreateProvider(Guid tenantId) =>
+        Provider.Create(
+            tenantId,
+            "Atlas Medical",
+            "Atlas Health",
+            "atlas@example.com",
+            "555-1000",
+            "123 Main St",
+            "Phoenix",
+            "AZ",
+            "85001",
+            isActive: true,
+            acceptingReferrals: true,
+            createdByUserId: null);
+
+    private static Referral CreateReferral(Guid tenantId, Guid providerId, string firstName, string lastName) =>
+        Referral.Create(
+            tenantId,
+            referringOrganizationId: null,
+            receivingOrganizationId: null,
+            providerId: providerId,
+            subjectPartyId: null,
+            subjectNameSnapshot: $"{firstName} {lastName}",
+            subjectDobSnapshot: null,
+            clientFirstName: firstName,
+            clientLastName: lastName,
+            clientDob: null,
+            clientPhone: "555-3000",
+            clientEmail: $"{firstName.ToLowerInvariant()}@example.com",
+            caseNumber: null,
+            requestedService: "Physical Therapy",
+            urgency: Referral.ValidUrgencies.Normal,
+            notes: null,
+            createdByUserId: null);
+
+    private static void SetCreatedAtUtc(Referral referral, DateTime value) =>
+        typeof(Referral)
+            .GetProperty(nameof(Referral.CreatedAtUtc))!
+            .SetValue(referral, value);
 }

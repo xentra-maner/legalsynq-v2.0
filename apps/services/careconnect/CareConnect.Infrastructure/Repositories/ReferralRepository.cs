@@ -155,7 +155,18 @@ public class ReferralRepository : IReferralRepository
             q = q.Where(r => r.CreatedAtUtc >= query.CreatedFrom.Value);
 
         if (query.CreatedTo.HasValue)
-            q = q.Where(r => r.CreatedAtUtc <= query.CreatedTo.Value);
+        {
+            var createdTo = query.CreatedTo.Value;
+            if (createdTo.TimeOfDay == TimeSpan.Zero)
+            {
+                var exclusiveCreatedTo = createdTo.Date.AddDays(1);
+                q = q.Where(r => r.CreatedAtUtc < exclusiveCreatedTo);
+            }
+            else
+            {
+                q = q.Where(r => r.CreatedAtUtc <= createdTo);
+            }
+        }
 
         // CC-REFERRER-EMAIL: include referrals by org ID, and also any publicly-submitted
         // referrals (ReferringOrganizationId IS NULL) whose ReferrerEmail matches the

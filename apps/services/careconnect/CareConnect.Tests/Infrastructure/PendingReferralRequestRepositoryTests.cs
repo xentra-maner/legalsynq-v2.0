@@ -70,6 +70,40 @@ public sealed class PendingReferralRequestRepositoryTests
         Assert.Equal(1, result.TotalCount);
     }
 
+    [Fact]
+    public async Task SearchForAttributionAsync_DateOnlyCreatedTo_IncludesEntireDay()
+    {
+        await using var db = CreateDbContext();
+        var tenantId = Guid.CreateVersion7();
+        var lawFirmOrgId = Guid.CreateVersion7();
+        var attribution = BuildAttribution(tenantId);
+        var attributionId = attribution.Id;
+
+        var inRange = BuildRequest(tenantId, lawFirmOrgId, attributionId, "Aug31");
+        SetCreatedAtUtc(inRange, new DateTime(2026, 8, 31, 17, 30, 0, DateTimeKind.Utc));
+        var outOfRange = BuildRequest(tenantId, lawFirmOrgId, attributionId, "Sep1");
+        SetCreatedAtUtc(outOfRange, new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc));
+
+        db.ReferralAttributions.Add(attribution);
+        db.PendingReferralRequests.AddRange(inRange, outOfRange);
+        await db.SaveChangesAsync();
+
+        var repository = new PendingReferralRequestRepository(db);
+
+        var result = await repository.SearchForAttributionAsync(
+            tenantId,
+            attributionId,
+            status: null,
+            createdFrom: new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc),
+            createdTo: new DateTime(2026, 8, 31, 0, 0, 0, DateTimeKind.Utc),
+            page: 1,
+            pageSize: 20);
+
+        var item = Assert.Single(result.Items);
+        Assert.Equal("JaneAug31", item.ClientFirstName);
+        Assert.Equal(1, result.TotalCount);
+    }
+
     private static PendingReferralRequest BuildRequest(
         Guid tenantId,
         Guid lawFirmOrgId,
@@ -112,4 +146,9 @@ public sealed class PendingReferralRequestRepositoryTests
 
         return new CareConnectDbContext(options);
     }
+
+    private static void SetCreatedAtUtc(PendingReferralRequest request, DateTime value) =>
+        typeof(PendingReferralRequest)
+            .GetProperty(nameof(PendingReferralRequest.CreatedAtUtc))!
+            .SetValue(request, value);
 }

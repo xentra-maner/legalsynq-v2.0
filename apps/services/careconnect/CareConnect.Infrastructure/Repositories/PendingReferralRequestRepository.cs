@@ -57,7 +57,12 @@ public sealed class PendingReferralRequestRepository : IPendingReferralRequestRe
             q = q.Where(r => r.CreatedAtUtc >= createdFrom.Value);
 
         if (createdTo.HasValue)
-            q = q.Where(r => r.CreatedAtUtc <= createdTo.Value);
+        {
+            var to = createdTo.Value;
+            q = IsDateOnlyFilter(to)
+                ? q.Where(r => r.CreatedAtUtc < to.AddDays(1))
+                : q.Where(r => r.CreatedAtUtc <= to);
+        }
 
         var total = await q.CountAsync(ct);
         var items = await q
@@ -90,10 +95,17 @@ public sealed class PendingReferralRequestRepository : IPendingReferralRequestRe
             q = q.Where(r => r.CreatedAtUtc >= createdFrom.Value);
 
         if (createdTo.HasValue)
-            q = q.Where(r => r.CreatedAtUtc <= createdTo.Value);
+        {
+            var to = createdTo.Value;
+            q = IsDateOnlyFilter(to)
+                ? q.Where(r => r.CreatedAtUtc < to.AddDays(1))
+                : q.Where(r => r.CreatedAtUtc <= to);
+        }
 
         return await q.CountAsync(ct);
     }
+
+    private static bool IsDateOnlyFilter(DateTime value) => value.TimeOfDay == TimeSpan.Zero;
 
     public async Task<PendingReferralRequest?> GetForAttributionAsync(
         Guid tenantId,

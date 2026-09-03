@@ -229,7 +229,7 @@ public class ReferralEmailService : IReferralEmailService
         // ── Provider notification ──────────────────────────────────────────
         if (!string.IsNullOrWhiteSpace(provider.Email))
         {
-            var dedupeKey = $"referral:{referral.Id}:created:provider";
+            var dedupeKey = $"referral:{referral.Id}:created:provider:{provider.Id}";
             var subject   = $"New referral from {referral.ReferrerFirmName}";
             var body      = BuildNewReferralEmailHtml(referral, provider, providerEntryLink, treatmentTypeName);
 
@@ -266,7 +266,7 @@ public class ReferralEmailService : IReferralEmailService
         // their submission confirmation as long as ReferrerEmail is present.
         if (!string.IsNullOrWhiteSpace(referral.ReferrerEmail))
         {
-            var refDedupeKey = $"referral:{referral.Id}:created:referrer";
+            var refDedupeKey = $"referral:{referral.Id}:created:referrer:{provider.Id}";
             var refSubject   = $"Referral submitted — {referral.ClientFirstName} {referral.ClientLastName}";
             var refBody      = BuildReferrerSubmissionHtml(referral, provider, firmStatusLink, treatmentTypeName);
 

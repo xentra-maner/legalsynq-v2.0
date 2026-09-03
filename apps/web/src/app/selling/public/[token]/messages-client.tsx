@@ -195,14 +195,36 @@ function EmptyState({ icon, message }: { icon: string; message: string }) {
 }
 
 function formatMessageTime(value: string) {
-  const date = new Date(value);
+  const date = new Date(normalizeUtcTimestamp(value));
   if (Number.isNaN(date.getTime())) return "";
 
   return new Intl.DateTimeFormat("en-US", {
-    month: "2-digit",
-    day: "2-digit",
+    month: "long",
+    day: "numeric",
     year: "numeric",
-    hour: "2-digit",
+    hour: "numeric",
     minute: "2-digit",
   }).format(date);
+}
+
+function normalizeUtcTimestamp(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return trimmed;
+  return /(?:Z|[+-]\d{2}:?\d{2})$/i.test(trimmed) ? trimmed : `${trimmed}Z`;
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(0)} KB`;
+  return `${(kb / 1024).toFixed(1)} MB`;
+}
+
+function fileIconFor(fileName: string) {
+  const extension = fileName.split(".").pop()?.toLowerCase();
+  if (extension === "pdf") return "ri-file-pdf-2-line";
+  if (["jpg", "jpeg", "png"].includes(extension ?? "")) return "ri-image-line";
+  if (["xlsx", "xls", "csv"].includes(extension ?? "")) return "ri-file-excel-2-line";
+  if (extension === "docx") return "ri-file-word-2-line";
+  return "ri-file-line";
 }

@@ -93,6 +93,36 @@ describe("PublicPortalMessagesCard", () => {
     expect(screen.getByText("We are reviewing the lien package.")).toBeInTheDocument();
   });
 
+  test("renders suffix-less UTC timestamps in the browser timezone", () => {
+    const timestamp = "2026-07-28T12:30:00";
+    const expectedTimestamp = new Intl.DateTimeFormat("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(new Date(`${timestamp}Z`));
+
+    render(
+      <PublicPortalMessagesCard
+        token="seller-token"
+        audience="seller"
+        initialMessages={[
+          {
+            id: "message-1",
+            senderType: "buyer",
+            senderName: "Buyer Reviewer",
+            senderEmail: "buyer@example.test",
+            message: "We are reviewing the lien package.",
+            createdAtUtc: timestamp,
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText(expectedTimestamp)).toBeInTheDocument();
+  });
+
   test("shows the API error when sending fails", async () => {
     postPublicBuyerPortalMessageMock.mockResolvedValue({
       ok: false,

@@ -307,10 +307,10 @@ export function LiensTab({
         sorting={sorting}
       />
 
-      {/* <LienUpdatesSection
+      <LienUpdatesSection
         liensUpdates={liensUpdates ?? []}
         entriesCount={liensUpdates?.length ?? 0}
-      /> */}
+      />
     </div>
   );
 

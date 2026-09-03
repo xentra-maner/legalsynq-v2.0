@@ -47,6 +47,7 @@ Gateway.Api/
   - `/.well-known/apple-app-site-association`
   - `/.well-known/assetlinks.json`
 - SynqLien buyer offer emails open `/selling/public/{token}` in the tenant web app, which forwards to the gateway path `/liens/api/liens/selling/public/{token}`. That gateway route is anonymous; the Liens service validates the opaque buyer access token and expiry.
+- CareConnect provider referral email links open token-gated public routes in the tenant web app. The gateway keeps the corresponding CareConnect token mutations anonymous (`accept-by-token`, `decline-by-token`, `complete-by-token`, `cancel-by-token`, and `treatment-type-by-token`); the CareConnect service validates the HMAC view token and token version before mutating the referral.
 - The gateway Kestrel request-body cap is set high enough for SynqLien's 50 MB multipart document uploads, with downstream services still enforcing their own file-size limits.
 - Internal service-to-service calls (e.g. Identity → Notifications, Tenant → Identity) bypass the gateway and use direct HTTP with service tokens or provisioning secrets.
 - For `systemd` deployments that use `EnvironmentFile=`, keep YARP cluster and destination override keys underscore-only, for example `ReverseProxy__Clusters__identity_cluster__Destinations__identity_primary__Address`.

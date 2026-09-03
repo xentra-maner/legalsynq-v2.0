@@ -202,7 +202,7 @@ export const MergePdf: React.FC<MergePdfProps> = ({
                 </div>
                 <div></div> {/* Empty header for drag handle */}
                 <div className="px-2">Name</div>
-                <div>Type</div>
+                <div>Document Type</div>
                 <div>Last Update</div>
               </div>
 
@@ -244,7 +244,7 @@ export const MergePdf: React.FC<MergePdfProps> = ({
 
                     {/* Type */}
                     <div className="text-sm text-gray-500 truncate">
-                      {/* {convert(d["typeId"])} */}—
+                      {d.documentType ?? "--"}
                     </div>
 
                     {/* Date */}

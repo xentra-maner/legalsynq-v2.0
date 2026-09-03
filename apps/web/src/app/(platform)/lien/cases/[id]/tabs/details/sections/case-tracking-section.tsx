@@ -137,7 +137,7 @@ export function CaseTrackingSection({
 
             <div>
               <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
-                Date of Loss
+                Date of Incident
               </label>
               <Field
                 label=""

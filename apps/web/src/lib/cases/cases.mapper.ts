@@ -85,6 +85,18 @@ export function mapCaseToListItem(dto: CaseResponseDto): CaseListItem {
   };
 }
 
+function insertSpaceInCamelCase(str: string): string {
+  // Check if the string contains a camelCase or PascalCase pattern (lowercase followed by uppercase)
+  const isCamelOrPascal = /[a-z][A-Z]/.test(str);
+
+  if (isCamelOrPascal) {
+    // Insert a space before any capital letter preceded by a lowercase letter or digit
+    return str.replace(/([a-z0-9])([A-Z])/g, "$1 $2");
+  }
+
+  return str;
+}
+
 export function mapCaseToDetail(dto: CaseResponseDto): CaseDetail {
   return {
     id: dto.id,
@@ -111,7 +123,7 @@ export function mapCaseToDetail(dto: CaseResponseDto): CaseDetail {
     clientState: safeString(dto.clientState),
     clientZipcode: safeString(dto.clientZipcode),
     sex: safeString(dto.sex),
-    caseType: safeString(dto.caseType),
+    caseType: insertSpaceInCamelCase(safeString(dto.caseType)),
     currentMedicalStatus: safeString(dto.currentMedicalStatus),
     stateOfIncident: safeString(dto.stateOfIncident),
     trackingFollowUpDate: formatDateField(dto.trackingFollowUpDate),

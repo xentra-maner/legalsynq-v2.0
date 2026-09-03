@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { ColumnDef } from "@tanstack/react-table";
+import type { ColumnDef, SortingState } from "@tanstack/react-table";
 import {
   CaseLienItemMetadata,
   casesService,
@@ -66,6 +66,7 @@ export function LiensTab({
   const deleteLien = useDeleteLien(caseId);
 
   const [pagination, setPagination] = useState<PaginationMeta>(liensPagination);
+  const [sorting, setSorting] = useState<SortingState>([]);
 
   const serverQuery = useMemo<LiensQuery>(
     () => ({
@@ -76,8 +77,10 @@ export function LiensTab({
       purchaseDateTo: filters.purchaseDateTo || undefined,
       initialServiceDateFrom: filters.initialServiceDateFrom || undefined,
       initialServiceDateTo: filters.initialServiceDateTo || undefined,
+      sortBy: sorting[0]?.id ?? "lienNumber",
+      sortDirection: sorting[0]?.desc ? "desc" : "asc",
     }),
-    [liensPagination.pageSize, filters],
+    [liensPagination.pageSize, filters, sorting],
   );
   const { data: filteredLiens } = useCaseLiens(caseId, serverQuery, "liens");
   const liensData = (filteredLiens?.items ??
@@ -170,8 +173,9 @@ export function LiensTab({
 
   const lienRowColumns: ColumnDef<(typeof displayLiens)[number], any>[] = [
     {
-      id: "lienId",
+      id: "lienNumber",
       header: "Lien ID",
+      accessorKey: "lienNumber",
       cell: ({ row }) => (
         <span className="text-sm text-gray-600 max-w-40 whitespace-nowrap">
           {row.original.lienNumber}
@@ -181,6 +185,8 @@ export function LiensTab({
     {
       id: "facilityName",
       header: "Facility Name",
+      accessorKey: "facilityName",
+
       cell: ({ row }) => (
         <span className="text-sm text-gray-600 truncate max-w-40 block">
           {row.original.facilityName}
@@ -190,6 +196,7 @@ export function LiensTab({
     {
       id: "serviceDate",
       header: "Initial Service Date",
+      accessorKey: "initialServiceDate",
       cell: ({ row }) => (
         <span className="text-sm text-gray-600  whitespace-nowrap">
           {row.original.serviceDate}
@@ -199,6 +206,7 @@ export function LiensTab({
     {
       id: "purchaseDate",
       header: "Purchase Date",
+      accessorKey: "purchaseDate",
       cell: ({ row }) => (
         <span className="text-sm text-gray-600  whitespace-nowrap">
           {row.original.purchaseDate}
@@ -208,7 +216,7 @@ export function LiensTab({
     {
       id: "purchaseAmount",
       header: "Purchase Amount",
-      meta: { align: "right" },
+      accessorKey: "purchaseAmount",
       cell: ({ row }) => (
         <span className="text-sm text-gray-600  tabular-nums">
           {formatCurrency(row.original.purchaseAmount)}
@@ -218,7 +226,7 @@ export function LiensTab({
     {
       id: "originalAmount",
       header: "Billing Amount",
-      meta: { align: "right" },
+      accessorKey: "originalAmount",
       cell: ({ row }) => (
         <span className="text-sm text-gray-600  font-medium tabular-nums">
           {formatCurrency(row.original.originalAmount)}
@@ -228,6 +236,8 @@ export function LiensTab({
     {
       id: "isServicing",
       header: "Servicing",
+      accessorKey: "isServicing",
+
       cell: ({ row }) => (
         <span
           className={`text-sm font-medium ${row.original.isServicing ? "text-primary" : "text-gray-600"}`}
@@ -239,6 +249,8 @@ export function LiensTab({
     {
       id: "payment",
       header: "Amount Received",
+      accessorKey: "payment",
+
       cell: ({ row }) => (
         <span className="text-sm text-gray-700 tabular-nums">
           {formatCurrency(row.original.paymentAmount ?? 0)}
@@ -248,6 +260,7 @@ export function LiensTab({
     {
       id: "status",
       header: "Lien Status",
+      accessorKey: "status",
       cell: ({ row }) => <StatusBadge status={row.original.status} />,
     },
     {
@@ -290,12 +303,14 @@ export function LiensTab({
         onFilterClick={() => setShowFilter(true)}
         activeFilterCount={activeFilterCount}
         onRowClick={(id) => router.push(`/lien/cases/${caseId}/liens/${id}`)}
+        onSortingChange={(e) => setSorting(e)}
+        sorting={sorting}
       />
 
-      <LienUpdatesSection
+      {/* <LienUpdatesSection
         liensUpdates={liensUpdates ?? []}
         entriesCount={liensUpdates?.length ?? 0}
-      />
+      /> */}
     </div>
   );
 

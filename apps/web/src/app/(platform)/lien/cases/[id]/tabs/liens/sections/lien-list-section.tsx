@@ -1,4 +1,4 @@
-import type { ColumnDef } from "@tanstack/react-table";
+import type { ColumnDef, SortingState } from "@tanstack/react-table";
 import { BaseTable } from "@/components/ui/base-table";
 import { Pagination } from "@/components/ui/pagination";
 import type { PaginationMeta } from "@/lib/billofsale";
@@ -19,6 +19,8 @@ export function LienListSection<TLien>({
   onFilterClick,
   onRowClick,
   activeFilterCount = 0,
+  sorting,
+  onSortingChange,
 }: {
   search: string;
   onSearchChange: (v: string) => void;
@@ -33,6 +35,8 @@ export function LienListSection<TLien>({
   onFilterClick?: () => void;
   onRowClick?: (id: number) => void;
   activeFilterCount?: number;
+  sorting: SortingState;
+  onSortingChange?: (sorting: any) => void;
 }) {
   return (
     <CollapsibleSection title="Liens" icon="ri-stack-line">
@@ -85,7 +89,10 @@ export function LienListSection<TLien>({
             data={paginatedLiens}
             getRowId={(l: any) => l.id}
             onRowClick={(l: any) => l.id && onRowClick?.(l.id)}
-            enablePagination={false}
+            enablePagination={true}
+            manualSorting
+            onSortingChange={onSortingChange}
+            sorting={sorting}
             footerCells={[
               {
                 content: `Totals (${filtered.length} lien${filtered.length !== 1 ? "s" : ""})`,
@@ -106,21 +113,6 @@ export function LienListSection<TLien>({
               { content: null, colSpan: 3 },
             ]}
           />
-          {pagination.totalPages > 0 && (
-            <div className="flex items-center justify-between gap-3 py-3">
-              <p className="text-xs text-gray-500">
-                Page {pagination.page} of {pagination.totalPages} ·{" "}
-                {pagination.totalCount} total
-              </p>
-              {pagination.totalPages > 1 && (
-                <Pagination
-                  page={pagination.page}
-                  totalPages={pagination.totalPages}
-                  onPageChange={onPageChange}
-                />
-              )}
-            </div>
-          )}
         </>
       )}
     </CollapsibleSection>

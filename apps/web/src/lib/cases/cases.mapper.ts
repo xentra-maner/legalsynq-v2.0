@@ -224,8 +224,10 @@ export function mapMedicalInfo(
       ? dateConvertertoIso(formatDateField(result.endServiceDate))
       : "",
     note: result.note,
-    isBulk: result.isBulk == "Yes" ? "true" : "false",
-    isServicing: result.isServicing == "Yes" || result.isServicing == "Y",
+    isBulk: (result.isBulk == "Yes" || result.isBulk == "Y").toString(),
+    isServicing: (
+      result.isServicing == "Yes" || result.isServicing == "Y"
+    ).toString(),
     fundingCompany: result.fundingCompany,
     fundingCompanyId: result.fundingCompanyId,
   };

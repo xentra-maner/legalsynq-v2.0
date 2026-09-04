@@ -2,6 +2,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { BaseTable } from "@/components/ui/base-table";
 import type { CaseUpdatesItem } from "@/lib/cases/cases.types";
 import { CollapsibleSection } from "../../../components/collapsible-section";
+import { NoteCell } from "@/app/(platform)/lien/reports/components/note-cell";
 
 export type CaseLienUpdateRow = CaseUpdatesItem & { lienId?: string };
 
@@ -36,9 +37,7 @@ const liensUpdatesColumns: ColumnDef<CaseLienUpdateRow, any>[] = [
   {
     id: "description",
     header: "Description",
-    cell: ({ row }) => (
-      <span className="text-sm text-gray-600">{row.original.description}</span>
-    ),
+    cell: ({ row }) => <NoteCell value={row.original.description}></NoteCell>,
   },
   {
     id: "updatedBy",

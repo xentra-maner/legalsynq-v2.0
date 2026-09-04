@@ -362,95 +362,171 @@ public sealed class PendingReferralRequestService : IPendingReferralRequestServi
         if (item.Status != PendingReferralRequest.Statuses.PendingReview)
             throw new ConflictException("PENDING_REFERRAL_ALREADY_CONVERTED");
 
-        Provider provider;
-        Guid? facilityId = null;
-        Guid? receivingOrganizationId;
-        var selectedNetworkProviderId = request.NetworkProviderId;
-        var selectedProviderId = request.ProviderId.HasValue && request.ProviderId.Value != Guid.Empty
-            ? request.ProviderId
-            : item.ProviderPreferences.OrderBy(p => p.DisplayOrder).FirstOrDefault()?.ProviderId ?? item.RecommendedProviderId;
-        var selectedFacilityId = request.ProviderId.HasValue && request.ProviderId.Value != Guid.Empty
-            ? request.FacilityId
-            : item.ProviderPreferences.OrderBy(p => p.DisplayOrder).FirstOrDefault()?.FacilityId ?? item.RecommendedFacilityId;
+        var lawFirmName = await _identityOrganizations.GetOrganizationNameAsync(lawFirmOrganizationId, ct);
+        var targets = await ResolveConversionTargetsAsync(tenantId, item, request, ct);
+        var referrals = new List<Referral>(targets.Count);
 
-        if (selectedNetworkProviderId.HasValue)
+        foreach (var target in targets)
         {
-            var membership = await _networks.GetTenantNetworkMembershipAsync(tenantId, selectedNetworkProviderId.Value, ct)
-                ?? throw new NotFoundException($"Network provider '{selectedNetworkProviderId.Value}' was not found.");
-            if (!membership.IsActive || !membership.AcceptingReferrals)
-                throw new ValidationException("One or more validation errors occurred.",
-                    new() { ["networkProviderId"] = ["Selected provider location is not accepting referrals."] });
+            Guid? orgRelationshipId = null;
+            if (target.ReceivingOrganizationId.HasValue)
+            {
+                orgRelationshipId = await _relationshipResolver.FindActiveRelationshipAsync(
+                    lawFirmOrganizationId,
+                    target.ReceivingOrganizationId.Value,
+                    ct);
+            }
 
-            provider = membership.Provider;
-            facilityId = membership.FacilityId;
-            receivingOrganizationId = provider.OrganizationId;
+            referrals.Add(Referral.Create(
+                tenantId,
+                referringOrganizationId: lawFirmOrganizationId,
+                receivingOrganizationId: target.ReceivingOrganizationId,
+                providerId: target.Provider.Id,
+                subjectPartyId: null,
+                subjectNameSnapshot: null,
+                subjectDobSnapshot: null,
+                clientFirstName: item.ClientFirstName,
+                clientLastName: item.ClientLastName,
+                clientDob: item.ClientDob,
+                clientPhone: item.ClientPhone,
+                clientEmail: item.ClientEmail,
+                caseNumber: item.CaseNumber,
+                requestedService: item.RequestedService,
+                urgency: item.Urgency,
+                notes: item.Notes,
+                createdByUserId: userId,
+                organizationRelationshipId: orgRelationshipId,
+                referrerEmail: userEmail,
+                referrerName: userName,
+                referrerFirmName: lawFirmName,
+                treatmentTypeId: item.TreatmentTypeId,
+                dateOfAccident: item.DateOfAccident,
+                facilityId: target.FacilityId,
+                referralAttributionId: item.ReferralAttributionId,
+                origin: ReferralOrigin.ReferralAssociate,
+                lienCompanyName: item.LienCompanyName,
+                lienCompanyEmail: item.LienCompanyEmail));
         }
-        else if (selectedProviderId.HasValue && selectedProviderId.Value != Guid.Empty)
+
+        var primaryReferral = referrals[0];
+        item.MarkConverted(primaryReferral.Id, userId);
+        await _pending.UpdateAsync(item, referrals, ct);
+
+        foreach (var referral in referrals)
+            await CopyPendingAttachmentsToReferralAsync(tenantId, item.Id, referral.Id, userId, ct);
+
+        var treatmentTypeName = item.TreatmentTypeId.HasValue
+            ? await _referrals.GetTreatmentTypeNameAsync(item.TreatmentTypeId.Value, ct)
+            : null;
+
+        foreach (var referral in referrals)
+            FireProviderNotification(referral.TenantId, referral.Id, referral.ProviderId, treatmentTypeName);
+
+        var loaded = await _referrals.GetByIdAsync(tenantId, primaryReferral.Id, ct)
+            ?? throw new NotFoundException($"Referral '{primaryReferral.Id}' was not found after conversion.");
+        return ToReferralResponse(loaded, treatmentTypeName);
+    }
+
+    private async Task<List<ConversionTarget>> ResolveConversionTargetsAsync(
+        Guid tenantId,
+        PendingReferralRequest item,
+        ConvertPendingReferralRequest request,
+        CancellationToken ct)
+    {
+        var selections = BuildConversionSelections(item, request);
+        var targets = new List<ConversionTarget>(selections.Count);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var selection in selections)
         {
-            provider = await _providers.GetByIdCrossAsync(selectedProviderId.Value, ct)
-                ?? throw new NotFoundException($"Provider '{selectedProviderId.Value}' was not found.");
-            facilityId = ResolveProviderFacilityId(provider, selectedFacilityId, requireActive: true, fieldName: "facilityId");
-            receivingOrganizationId = provider.OrganizationId;
+            var target = await ResolveConversionTargetAsync(tenantId, selection, ct);
+            var key = $"{target.Provider.Id:N}:{target.FacilityId?.ToString("N") ?? string.Empty}";
+            if (seen.Add(key))
+                targets.Add(target);
         }
-        else
+
+        if (targets.Count == 0)
         {
             throw new ValidationException("One or more validation errors occurred.",
                 new() { ["providerId"] = ["ProviderId or NetworkProviderId is required."] });
         }
 
-        var lawFirmName = await _identityOrganizations.GetOrganizationNameAsync(lawFirmOrganizationId, ct);
+        return targets;
+    }
 
-        Guid? orgRelationshipId = null;
-        if (receivingOrganizationId.HasValue)
+    private static List<PendingReferralProviderSelectionRequest> BuildConversionSelections(
+        PendingReferralRequest item,
+        ConvertPendingReferralRequest request)
+    {
+        if (request.ProviderSelections is { Count: > 0 })
+            return request.ProviderSelections;
+
+        if (request.NetworkProviderId.HasValue || (request.ProviderId.HasValue && request.ProviderId.Value != Guid.Empty))
         {
-            orgRelationshipId = await _relationshipResolver.FindActiveRelationshipAsync(
-                lawFirmOrganizationId,
-                receivingOrganizationId.Value,
-                ct);
+            return
+            [
+                new PendingReferralProviderSelectionRequest
+                {
+                    ProviderId = request.ProviderId,
+                    NetworkProviderId = request.NetworkProviderId,
+                    FacilityId = request.FacilityId,
+                },
+            ];
         }
 
-        var referral = Referral.Create(
-            tenantId,
-            referringOrganizationId: lawFirmOrganizationId,
-            receivingOrganizationId: receivingOrganizationId,
-            providerId: provider.Id,
-            subjectPartyId: null,
-            subjectNameSnapshot: null,
-            subjectDobSnapshot: null,
-            clientFirstName: item.ClientFirstName,
-            clientLastName: item.ClientLastName,
-            clientDob: item.ClientDob,
-            clientPhone: item.ClientPhone,
-            clientEmail: item.ClientEmail,
-            caseNumber: item.CaseNumber,
-            requestedService: item.RequestedService,
-            urgency: item.Urgency,
-            notes: item.Notes,
-            createdByUserId: userId,
-            organizationRelationshipId: orgRelationshipId,
-            referrerEmail: userEmail,
-            referrerName: userName,
-            referrerFirmName: lawFirmName,
-            treatmentTypeId: item.TreatmentTypeId,
-            dateOfAccident: item.DateOfAccident,
-            facilityId: facilityId,
-            referralAttributionId: item.ReferralAttributionId,
-            origin: ReferralOrigin.ReferralAssociate,
-            lienCompanyName: item.LienCompanyName,
-            lienCompanyEmail: item.LienCompanyEmail);
+        var preferences = item.ProviderPreferences
+            .OrderBy(p => p.DisplayOrder)
+            .Select(p => new PendingReferralProviderSelectionRequest
+            {
+                ProviderId = p.ProviderId,
+                FacilityId = p.FacilityId,
+            })
+            .ToList();
 
-        item.MarkConverted(referral.Id, userId);
-        await _pending.UpdateAsync(item, referral, ct);
-        await CopyPendingAttachmentsToReferralAsync(tenantId, item.Id, referral.Id, userId, ct);
+        if (preferences.Count > 0)
+            return preferences;
 
-        var treatmentTypeName = item.TreatmentTypeId.HasValue
-            ? await _referrals.GetTreatmentTypeNameAsync(item.TreatmentTypeId.Value, ct)
-            : null;
-        FireProviderNotification(referral.TenantId, referral.Id, provider.Id, treatmentTypeName);
+        return item.RecommendedProviderId.HasValue
+            ?
+            [
+                new PendingReferralProviderSelectionRequest
+                {
+                    ProviderId = item.RecommendedProviderId,
+                    FacilityId = item.RecommendedFacilityId,
+                },
+            ]
+            : [];
+    }
 
-        var loaded = await _referrals.GetByIdAsync(tenantId, referral.Id, ct)
-            ?? throw new NotFoundException($"Referral '{referral.Id}' was not found after conversion.");
-        return ToReferralResponse(loaded, treatmentTypeName);
+    private async Task<ConversionTarget> ResolveConversionTargetAsync(
+        Guid tenantId,
+        PendingReferralProviderSelectionRequest selection,
+        CancellationToken ct)
+    {
+        if (selection.NetworkProviderId.HasValue)
+        {
+            var membership = await _networks.GetTenantNetworkMembershipAsync(tenantId, selection.NetworkProviderId.Value, ct)
+                ?? throw new NotFoundException($"Network provider '{selection.NetworkProviderId.Value}' was not found.");
+            if (!membership.IsActive || !membership.AcceptingReferrals)
+                throw new ValidationException("One or more validation errors occurred.",
+                    new() { ["networkProviderId"] = ["Selected provider location is not accepting referrals."] });
+
+            if (selection.ProviderId.HasValue && selection.ProviderId.Value != Guid.Empty && selection.ProviderId.Value != membership.ProviderId)
+                throw new NotFoundException($"Network provider '{selection.NetworkProviderId.Value}' was not found.");
+
+            return new ConversionTarget(membership.Provider, membership.FacilityId, membership.Provider.OrganizationId);
+        }
+
+        if (selection.ProviderId.HasValue && selection.ProviderId.Value != Guid.Empty)
+        {
+            var provider = await _providers.GetByIdCrossAsync(selection.ProviderId.Value, ct)
+                ?? throw new NotFoundException($"Provider '{selection.ProviderId.Value}' was not found.");
+            var facilityId = ResolveProviderFacilityId(provider, selection.FacilityId, requireActive: true, fieldName: "facilityId");
+            return new ConversionTarget(provider, facilityId, provider.OrganizationId);
+        }
+
+        throw new ValidationException("One or more validation errors occurred.",
+            new() { ["providerId"] = ["ProviderId or NetworkProviderId is required."] });
     }
 
     private void FireProviderNotification(Guid tenantId, Guid referralId, Guid providerId, string? treatmentTypeName)
@@ -466,9 +542,12 @@ public sealed class PendingReferralRequestService : IPendingReferralRequestServi
                 var providers = scope.ServiceProvider.GetRequiredService<IProviderRepository>();
                 var emailSvc = scope.ServiceProvider.GetRequiredService<IReferralEmailService>();
                 var referral = await referrals.GetByIdAsync(tenantId, referralId, CancellationToken.None);
+                if (referral is null) return;
+
                 var provider = await providers.GetByIdCrossAsync(providerId, CancellationToken.None);
-                if (referral is not null && provider is not null)
-                    await emailSvc.SendNewReferralNotificationAsync(referral, provider, treatmentTypeName, CancellationToken.None);
+                if (provider is null) return;
+
+                await emailSvc.SendNewReferralNotificationAsync(referral, provider, treatmentTypeName, CancellationToken.None);
             }
             catch (Exception ex)
             {
@@ -774,4 +853,9 @@ public sealed class PendingReferralRequestService : IPendingReferralRequestServi
         string ProviderName,
         string? FacilityName)
     ;
+
+    private sealed record ConversionTarget(
+        Provider Provider,
+        Guid? FacilityId,
+        Guid? ReceivingOrganizationId);
 }

@@ -20,7 +20,8 @@ public static class ReferralLocationResolver
     {
         ArgumentNullException.ThrowIfNull(referral);
 
-        if (referral.Facility is { } facility)
+        if (referral.Facility is { } facility &&
+            (!referral.FacilityId.HasValue || providerFallback is null || providerFallback.Id == referral.ProviderId))
         {
             return new ReferralLocation(
                 FacilityName:  facility.Name,
@@ -31,7 +32,7 @@ public static class ReferralLocationResolver
                 IsMobile:      facility.IsMobile);
         }
 
-        var provider = referral.Provider ?? providerFallback;
+        var provider = providerFallback ?? referral.Provider;
         return new ReferralLocation(
             FacilityName:  null,
             AddressLine1:  provider?.AddressLine1 ?? string.Empty,

@@ -440,6 +440,13 @@ export interface ConvertPendingReferralRequest {
   providerId?: string;
   networkProviderId?: string;
   facilityId?: string | null;
+  providerSelections?: PendingReferralProviderSelectionRequest[];
+}
+
+export interface PendingReferralProviderSelectionRequest {
+  providerId?: string;
+  networkProviderId?: string;
+  facilityId?: string | null;
 }
 
 export interface UpdatePendingReferralRequest {

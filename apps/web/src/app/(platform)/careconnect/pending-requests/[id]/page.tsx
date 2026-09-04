@@ -609,8 +609,6 @@ export default function PendingReferralRequestDetailPage() {
     [selectedProviders],
   );
 
-  const firstSelectedProvider = selectedProviders[0] ?? null;
-
   const serviceTypeOptions = useMemo(() => {
     const current = form?.requestedService?.trim();
     if (current && !SERVICE_TYPES.includes(current)) return [current, ...SERVICE_TYPES];
@@ -815,9 +813,11 @@ export default function PendingReferralRequestDetailPage() {
       setError(validationError);
       return;
     }
-    const selection = parseProviderSelection(reviewProviderKey(firstSelectedProvider ?? { id: "", facilityId: "" }));
-    if (!selection) {
-      setError("Select a provider before accepting the request.");
+    const providerSelections = selectedProviders
+      .map(provider => parseProviderSelection(reviewProviderKey(provider)))
+      .filter((selection): selection is { providerId: string; facilityId?: string | null } => selection !== null);
+    if (providerSelections.length === 0) {
+      setError("Select at least one provider before accepting the request.");
       setProviderPickerOpen(true);
       return;
     }
@@ -831,7 +831,7 @@ export default function PendingReferralRequestDetailPage() {
       const nextForm = formFromRequest(saved.data);
       setForm(nextForm);
       setFieldErrors(validateReviewDateFields(nextForm));
-      const result = await careConnectApi.pendingReferralRequests.convert(request.id, selection);
+      const result = await careConnectApi.pendingReferralRequests.convert(request.id, { providerSelections });
       router.push(`/careconnect/referrals/${result.data.id}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to accept referral request.");

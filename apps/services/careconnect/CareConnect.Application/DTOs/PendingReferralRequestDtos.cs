@@ -83,6 +83,14 @@ public sealed class ConvertPendingReferralRequest
     public Guid? ProviderId { get; set; }
     public Guid? NetworkProviderId { get; set; }
     public Guid? FacilityId { get; set; }
+    public List<PendingReferralProviderSelectionRequest> ProviderSelections { get; set; } = new();
+}
+
+public sealed class PendingReferralProviderSelectionRequest
+{
+    public Guid? ProviderId { get; set; }
+    public Guid? NetworkProviderId { get; set; }
+    public Guid? FacilityId { get; set; }
 }
 
 public sealed class UpdatePendingReferralRequest

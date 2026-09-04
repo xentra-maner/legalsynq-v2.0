@@ -163,10 +163,11 @@ not bypass law-firm review. The portal persists ordered preferences in
 `cc_PendingReferralProviderPreferences`; the legacy `RecommendedProvider*` columns mirror the first
 preference for backward compatibility/default routing. Authenticated law-firm users with
 `CARECONNECT_REFERRER` or `CARECONNECT_REFERRER_ADMIN` list their own organization's pending requests,
-review all stored preferences, and convert one by selecting the final provider; conversion creates a normal referral, preserves
-origination/origin/lien-company fields, and blocks repeat conversion. If the law firm converts without
-selecting a different provider, the first stored preference can be used as the default conversion
-target.
+review all stored preferences, and convert by selecting one or more final providers. Conversion creates
+one normal `cc_Referrals` row per selected provider/location, preserves origination/origin/lien-company
+fields on each referral, and blocks repeat conversion. The pending row's `ConvertedReferralId` points
+to the first created referral for backward compatibility. If the law firm converts without sending an
+explicit selection list, all stored provider preferences are used as the default conversion targets.
 The law-firm review queue and Referral Portal request list are labeled Referral Requests in the UI and
 expose outcome tabs for All, Pending, Accepted, and Declined requests. These map to an omitted status
 filter, `PendingReview`, `Converted`, and `Cancelled` respectively; `Cancelled` is labeled Declined

@@ -150,4 +150,11 @@ public sealed class PendingReferralRequestRepository : IPendingReferralRequestRe
         _db.PendingReferralRequests.Update(request);
         await _db.SaveChangesAsync(ct);
     }
+
+    public async Task UpdateAsync(PendingReferralRequest request, IReadOnlyCollection<Referral> referrals, CancellationToken ct = default)
+    {
+        await _db.Referrals.AddRangeAsync(referrals, ct);
+        _db.PendingReferralRequests.Update(request);
+        await _db.SaveChangesAsync(ct);
+    }
 }

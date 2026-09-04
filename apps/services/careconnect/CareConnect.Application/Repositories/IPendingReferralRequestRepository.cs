@@ -31,4 +31,5 @@ public interface IPendingReferralRequestRepository
     Task AddAsync(PendingReferralRequest request, CancellationToken ct = default);
     Task UpdateAsync(PendingReferralRequest request, CancellationToken ct = default);
     Task UpdateAsync(PendingReferralRequest request, Referral referral, CancellationToken ct = default);
+    Task UpdateAsync(PendingReferralRequest request, IReadOnlyCollection<Referral> referrals, CancellationToken ct = default);
 }

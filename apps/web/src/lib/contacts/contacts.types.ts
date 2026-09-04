@@ -8,6 +8,7 @@ export interface ContactResponseDto {
   organization?: string | null;
   email?: string | null;
   phone?: string | null;
+  phoneExtension?: string | null;
   fax?: string | null;
   website?: string | null;
   addressLine1?: string | null;

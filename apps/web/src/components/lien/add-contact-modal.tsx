@@ -22,6 +22,7 @@ interface EditableContact {
   contactType: string;
   email?: string | null;
   phone?: string | null;
+  phoneExtension?: string | null;
   addressLine1?: string | null;
   city?: string | null;
   state?: string | null;
@@ -152,6 +153,7 @@ const EMPTY_FORM = {
   contactSubtype: "",
   email: "",
   phone: "",
+  phoneExtension: "",
   addressLine1: "",
   city: "",
   state: "",
@@ -166,6 +168,7 @@ type ValidatableField =
   | "fullName"
   | "email"
   | "phone"
+  | "phoneExtension"
   | "postalCode";
 
 export function AddContactModal({
@@ -189,7 +192,7 @@ export function AddContactModal({
 }: AddContactModalProps) {
   const { lookup } = useSessionContext();
   const isEdit = Boolean(editTarget);
-
+  const hasExtension = Boolean(contactType === "LawFirm");
   // Sub-contacts (facility/law firm staff, case managers) keep separate
   // First/Last Name inputs; everything else ("main" contacts) collapses
   // them into a single Full Name input that's split on submit.
@@ -227,6 +230,7 @@ export function AddContactModal({
         contactSubtype: editTarget.contactSubtype ?? contactSubtype ?? "",
         email: editTarget.email ?? "",
         phone: editTarget.phone ?? "",
+        phoneExtension: editTarget.phoneExtension ?? "",
         addressLine1: editTarget.addressLine1 ?? "",
         city: editTarget.city ?? "",
         state: editTarget.state ?? "",
@@ -322,6 +326,7 @@ export function AddContactModal({
             }),
         email: form.email.trim() || undefined,
         phone: form.phone.trim() || undefined,
+        phoneExtension: form.phoneExtension.trim() || undefined,
         ...(hideAddress
           ? {}
           : {
@@ -344,10 +349,15 @@ export function AddContactModal({
       });
       onSaved(saved);
     } catch (err) {
-      toast.error(isEdit ? "Couldn't update contact" : "Couldn't create contact", {
-        description:
-          err instanceof ApiError ? err.message : "An unexpected error occurred",
-      });
+      toast.error(
+        isEdit ? "Couldn't update contact" : "Couldn't create contact",
+        {
+          description:
+            err instanceof ApiError
+              ? err.message
+              : "An unexpected error occurred",
+        },
+      );
     } finally {
       setSubmitting(false);
     }
@@ -489,7 +499,7 @@ export function AddContactModal({
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Email Address
@@ -505,6 +515,12 @@ export function AddContactModal({
               <p className="text-xs text-red-500 mt-1">{errors.email}</p>
             )}
           </div>
+        </div>
+        <div
+          className={
+            hasExtension ? "grid grid-cols-2 gap-4" : "grid grid-cols-1 gap-4"
+          }
+        >
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Phone
@@ -522,6 +538,26 @@ export function AddContactModal({
               <p className="text-xs text-red-500 mt-1">{errors.phone}</p>
             )}
           </div>
+
+          {hasExtension && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Extension
+              </label>
+              <input
+                type="text"
+                value={form.phoneExtension}
+                onChange={(e) => setField("phoneExtension", e.target.value)}
+                placeholder=""
+                className={inputCls("phone")}
+              />
+              {errors.phoneExtension && (
+                <p className="text-xs text-red-500 mt-1">
+                  {errors.phoneExtension}
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {!hideAddress && (

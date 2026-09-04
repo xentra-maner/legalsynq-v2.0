@@ -20,7 +20,10 @@ interface Props {
 const CONTACT_TYPE = "LawFirm";
 const PAGE_SIZE = 12;
 
-export function LawFirmContactSection({ lawFirmId, primaryButtonClassName }: Props) {
+export function LawFirmContactSection({
+  lawFirmId,
+  primaryButtonClassName,
+}: Props) {
   const addToast = useLienStore((s) => s.addToast);
   const [contacts, setContacts] = useState<ContactResponseDto[]>([]);
   const [roles, setRoles] = useState<LookupData[]>([]);
@@ -128,7 +131,7 @@ export function LawFirmContactSection({ lawFirmId, primaryButtonClassName }: Pro
           </button>
           <button
             onClick={openAdd}
-            className={`flex items-center gap-1.5 text-sm px-3 py-1.5 text-white rounded-lg ${primaryButtonClassName ?? 'bg-primary hover:bg-primary/90'}`}
+            className={`flex items-center gap-1.5 text-sm px-3 py-1.5 text-white rounded-lg ${primaryButtonClassName ?? "bg-primary hover:bg-primary/90"}`}
           >
             <i className="ri-add-line" />
             Add Contact
@@ -288,6 +291,7 @@ function TileView({
           <div className="flex items-center gap-2 text-xs text-gray-500">
             <i className="ri-phone-line text-gray-400 shrink-0" />
             <span>{c.phone || "--"}</span>
+            {c.phoneExtension && <span>ext. {c.phoneExtension || "--"}</span>}
           </div>
         </div>
       ))}

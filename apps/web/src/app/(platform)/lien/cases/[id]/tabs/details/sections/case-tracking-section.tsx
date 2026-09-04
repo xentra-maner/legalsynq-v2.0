@@ -137,7 +137,7 @@ export function CaseTrackingSection({
 
             <div>
               <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">
-                Date of Incident
+                Date of Loss
               </label>
               <Field
                 label=""
@@ -242,10 +242,7 @@ export function CaseTrackingSection({
               value={d.currentMedicalStatus || ""}
             />
             <FieldItem label="Case Type" value={d.caseType || ""} />
-            <FieldItem
-              label="Date of Incident"
-              value={d.dateOfIncident || ""}
-            />
+            <FieldItem label="Date of Loss" value={d.dateOfIncident || ""} />
             <FieldItem
               label="State of Incident"
               value={d.stateOfIncident || ""}

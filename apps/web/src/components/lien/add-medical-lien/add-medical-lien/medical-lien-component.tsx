@@ -22,6 +22,7 @@ export interface MedicalLienComponentProps {
   caseInfo?: any;
   purchase?: any;
   onClose: () => void;
+  onSave?: () => void;
 }
 
 const steps = [
@@ -357,6 +358,7 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
         title: "Liens Added",
         description: `Liens has been added to case.`,
       });
+      props.onSave?.();
       closeModal();
     } finally {
       setLoading(false);

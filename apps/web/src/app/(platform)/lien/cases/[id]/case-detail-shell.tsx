@@ -419,6 +419,15 @@ export function CaseDetailShell({
                   queryKey: ["case-liens-all", id],
                 });
               }}
+              onSave={() => {
+                queryClient.invalidateQueries({
+                  queryKey: ["lien-updates", id],
+                });
+
+                queryClient.invalidateQueries({
+                  queryKey: ["case-updates", id],
+                });
+              }}
             />
           </div>
         </div>

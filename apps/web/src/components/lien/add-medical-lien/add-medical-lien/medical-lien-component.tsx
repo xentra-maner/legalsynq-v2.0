@@ -158,8 +158,8 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
         initialServiceDate: dateConverter(payload.initialServiceDate),
         endServiceDate: dateConverter(payload.endServiceDate),
         note: payload.note,
-        isBulk: payload.isBulk == "true" ? "Y" : "N",
-        isServicing: payload.isServicing == "true" ? "Y" : "N",
+        isBulk: payload.isBulk == "true" ? "Yes" : "No",
+        isServicing: payload.isServicing == "true" ? "Yes" : "No",
         fundingCompanyId: payload.fundingCompanyId,
       };
       const response = await casesService.createMedicalLiens(request);

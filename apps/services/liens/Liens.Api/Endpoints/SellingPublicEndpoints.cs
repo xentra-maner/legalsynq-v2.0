@@ -522,6 +522,35 @@ public static class SellingPublicEndpoints
             ct);
         if (attachments.Count > 0)
             db.SellingPortalMessageAttachments.AddRange(attachments);
+
+        var inboxRecipient = string.Equals(senderType, SellingPortalMessageSenderType.Buyer, StringComparison.Ordinal)
+            ? view.AccessLink.CreatedByUserId
+            : await db.SellingBuyerAccessLinks
+                .AsNoTracking()
+                .Where(link =>
+                    link.TenantId == view.AccessLink.TenantId &&
+                    link.LienId == view.AccessLink.LienId &&
+                    link.BuyerOrgId == view.AccessLink.BuyerOrgId &&
+                    link.BuyerContactId == view.AccessLink.BuyerContactId &&
+                    link.AccountActivatedUserId != null)
+                .OrderByDescending(link => link.AccountActivatedAtUtc)
+                .ThenByDescending(link => link.Id)
+                .Select(link => link.AccountActivatedUserId)
+                .FirstOrDefaultAsync(ct);
+        if (inboxRecipient is { } recipientUserId && recipientUserId != Guid.Empty)
+        {
+            EnqueueInbox(
+                db,
+                view.AccessLink.TenantId,
+                recipientUserId,
+                NotificationTaxonomy.Liens.Events.OfferMessageCreated,
+                "message",
+                "New Message",
+                $"{sender.Name} sent a new message regarding lien {ResolveLienCode(view.Lien)}.",
+                publicMessage.CreatedAtUtc,
+                $"selling:message:{publicMessage.Id:N}:{recipientUserId:N}",
+                sender.Name);
+        }
         await db.SaveChangesAsync(ct);
 
         await SendPublicMessageNotificationAsync(
@@ -715,6 +744,7 @@ public static class SellingPublicEndpoints
             responseAmount.Value,
             FirstNonEmpty(request?.Notes, request?.Message));
         await ApplyPublicResponseToLienAsync(db, view, SellingBuyerResponseStatus.Accepted, ct);
+        EnqueueAccessLinkResponseInbox(db, view, accepted: true);
         await db.SaveChangesAsync(ct);
 
         var persistedLien = await db.Liens.AsNoTracking().FirstAsync(
@@ -895,6 +925,7 @@ public static class SellingPublicEndpoints
         view.AccessLink.MarkAccessed();
         view.AccessLink.RecordResponse(SellingBuyerResponseStatus.Declined, null, request?.Reason);
         await ApplyPublicResponseToLienAsync(db, view, SellingBuyerResponseStatus.Declined, ct);
+        EnqueueAccessLinkResponseInbox(db, view, accepted: false);
         await db.SaveChangesAsync(ct);
         var persistedLien = await db.Liens.AsNoTracking().FirstAsync(
             lien => lien.TenantId == view.AccessLink.TenantId && lien.Id == view.Lien.Id,
@@ -1053,8 +1084,22 @@ public static class SellingPublicEndpoints
                 view.AccessLink.SellerOrgId,
                 request.OfferAmount,
                 view.AccessLink.BuyerContactId,
-                request.Message);
+                request.Message,
+                submittedByPlatformUserId: view.AccessLink.AccountActivatedUserId);
             db.LienOffers.Add(offer);
+            if (offer.SubmittedByPlatformUserId is { } submittingUserId)
+            {
+                EnqueueInbox(
+                    db,
+                    view.AccessLink.TenantId,
+                    submittingUserId,
+                    NotificationTaxonomy.Liens.Events.OfferSubmitted,
+                    "lien",
+                    "Offer Submitted",
+                    $"Your offer for lien {ResolveLienCode(view.Lien)} was submitted.",
+                    offer.OfferedAtUtc,
+                    $"selling:offer:{offer.Id:N}:submitted:{submittingUserId:N}");
+            }
             view.AccessLink.MarkAccessed();
             await db.SaveChangesAsync(ct);
             var completed = await SellingIdempotency.CompleteAsync(db, started.Record!, view.AccessLink.BuyerContactId, StatusCodes.Status201Created, new
@@ -3062,6 +3107,64 @@ public static class SellingPublicEndpoints
 
     private static string? ReadIdempotencyKey(HttpContext httpContext)
         => httpContext.Request.Headers["Idempotency-Key"].FirstOrDefault();
+
+    private static void EnqueueAccessLinkResponseInbox(
+        LiensDbContext db,
+        PublicPortalView view,
+        bool accepted)
+    {
+        if (view.AccessLink.CreatedByUserId is not { } sellerUserId || sellerUserId == Guid.Empty)
+            return;
+
+        var sourceName = FirstNonEmpty(view.BuyerContact?.DisplayName, view.BuyerContact?.Organization, "Buyer")!;
+        var eventKey = accepted
+            ? NotificationTaxonomy.Liens.Events.OfferAccepted
+            : NotificationTaxonomy.Liens.Events.OfferRejected;
+        var title = accepted ? "Offer Accepted" : "Offer Declined";
+        var verb = accepted ? "accepted" : "declined";
+        EnqueueInbox(
+            db,
+            view.AccessLink.TenantId,
+            sellerUserId,
+            eventKey,
+            "lien",
+            title,
+            $"{sourceName} {verb} the offer for lien {ResolveLienCode(view.Lien)}.",
+            view.AccessLink.RespondedAtUtc ?? DateTime.UtcNow,
+            $"selling:access-link:{view.AccessLink.Id:N}:{verb}:{sellerUserId:N}",
+            sourceName);
+    }
+
+    private static void EnqueueInbox(
+        LiensDbContext db,
+        Guid tenantId,
+        Guid recipientUserId,
+        string eventKey,
+        string category,
+        string title,
+        string description,
+        DateTime occurredAtUtc,
+        string idempotencyKey,
+        string sourceDisplayName = "Synq Selling")
+    {
+        var initials = string.Concat(sourceDisplayName
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Take(2)
+            .Select(part => char.ToUpperInvariant(part[0])));
+        if (string.IsNullOrEmpty(initials)) initials = "SS";
+
+        db.SellingNotificationOutboxItems.Add(SellingNotificationOutboxItem.Create(
+            tenantId,
+            recipientUserId,
+            eventKey,
+            category,
+            title,
+            description,
+            sourceDisplayName,
+            initials,
+            occurredAtUtc,
+            idempotencyKey));
+    }
 
     private static void SetNoReferrerHeader(HttpResponse response) =>
         response.Headers["Referrer-Policy"] = "no-referrer";

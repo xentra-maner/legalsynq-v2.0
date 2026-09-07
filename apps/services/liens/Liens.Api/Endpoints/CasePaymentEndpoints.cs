@@ -200,6 +200,19 @@ public static class CasePaymentEndpoints
             .GroupBy(payment => payment.LienId)
             .Select(group => new { LienId = group.Key, Amount = group.Sum(payment => payment.Amount) })
             .ToDictionaryAsync(item => item.LienId, item => item.Amount, ct);
+
+        var availableBalance = visibleLiens.Sum(lien =>
+        {
+            var basis = lien.PurchasePrice ?? lien.AskAmount ?? lien.OriginalAmount;
+            return Math.Max(0m, basis - previouslyPaid.GetValueOrDefault(lien.Id));
+        });
+        if (request.Amount > availableBalance)
+        {
+            if (transaction is not null) await transaction.RollbackAsync(CancellationToken.None);
+            var message = $"Payment amount cannot exceed the available balance of {availableBalance.ToString("C2", CultureInfo.GetCultureInfo("en-US"))}.";
+            return ValidationError("amount", message, message);
+        }
+
         foreach (var allocation in request.Allocations)
         {
             var lien = visibleLiens.Single(item => item.Id == allocation.LienId);
@@ -458,12 +471,12 @@ public static class CasePaymentEndpoints
         UpdatedAtUtc = payment.UpdatedAtUtc,
     };
 
-    private static IResult ValidationError(string field, string message) => Results.BadRequest(new
+    private static IResult ValidationError(string field, string message, string? responseMessage = null) => Results.BadRequest(new
     {
         error = new
         {
             code = "validation_failed",
-            message = "One or more payment fields are invalid.",
+            message = responseMessage ?? "One or more payment fields are invalid.",
             fields = new Dictionary<string, string[]> { [field] = [message] },
         },
     });

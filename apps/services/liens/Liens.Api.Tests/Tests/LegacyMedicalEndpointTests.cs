@@ -82,12 +82,12 @@ public class LegacyMedicalEndpointTests : IClassFixture<LiensApiFactory>, IAsync
         var description = fieldUpdate!["description"]!.GetValue<string>();
         fieldUpdate["action"]!.GetValue<string>().Should().Be("Liens Details");
         fieldUpdate["lienCode"]!.GetValue<string>().Should().Be("LIEN-TEST-001");
-        description.Should().Contain("Purchase Date: blank → 06/22/2026");
-        description.Should().Contain("Initial Service Date: blank → 07/07/2026");
-        description.Should().Contain("End Service Date: blank → 07/03/2026");
-        description.Should().Contain("Bulk: blank → Yes");
-        description.Should().Contain("Servicing: blank → Yes");
-        description.Should().Contain("Note: blank → test");
+        description.Should().Contain("Purchase Date: \"\" → 06/22/2026");
+        description.Should().Contain("Initial Service Date: \"\" → 07/07/2026");
+        description.Should().Contain("End Service Date: \"\" → 07/03/2026");
+        description.Should().Contain("Bulk: \"\" → Yes");
+        description.Should().Contain("Servicing: \"\" → Yes");
+        description.Should().Contain("Note: \"\" → test");
     }
 
     [Fact]
@@ -134,7 +134,7 @@ public class LegacyMedicalEndpointTests : IClassFixture<LiensApiFactory>, IAsync
                 item["description"]!.GetValue<string>().StartsWith("Lien Update.", StringComparison.Ordinal));
 
         update!["action"]!.GetValue<string>().Should().Be("Liens Details");
-        update["description"]!.GetValue<string>().Should().Contain($"Note: blank → {note}");
+        update["description"]!.GetValue<string>().Should().Contain($"Note: \"\" → {note}");
         update["lienId"]!.GetValue<string>().Should().Be(SeedHelper.LienId.ToString());
         update["lienCode"]!.GetValue<string>().Should().Be("LIEN-TEST-001");
         update["updatedBy"]!.GetValue<string>().Should().Be("Demo User");
@@ -250,12 +250,12 @@ public class LegacyMedicalEndpointTests : IClassFixture<LiensApiFactory>, IAsync
         var description = fieldUpdate!["description"]!.GetValue<string>();
         fieldUpdate["action"]!.GetValue<string>().Should().Be("Liens Details");
         fieldUpdate["updatedBy"]!.GetValue<string>().Should().Be("Demo User");
-        description.Should().Contain("Purchase Date: blank → 06/22/2026");
-        description.Should().Contain("Initial Service Date: blank → 07/07/2026");
-        description.Should().Contain("End Service Date: blank → 07/03/2026");
-        description.Should().Contain("Bulk: blank → Yes");
-        description.Should().Contain("Servicing: blank → Yes");
-        description.Should().Contain("Note: blank → Settled lien servicing correction");
+        description.Should().Contain("Purchase Date: \"\" → 06/22/2026");
+        description.Should().Contain("Initial Service Date: \"\" → 07/07/2026");
+        description.Should().Contain("End Service Date: \"\" → 07/03/2026");
+        description.Should().Contain("Bulk: \"\" → Yes");
+        description.Should().Contain("Servicing: \"\" → Yes");
+        description.Should().Contain("Note: \"\" → Settled lien servicing correction");
     }
 
     [Fact]
@@ -332,17 +332,17 @@ public class LegacyMedicalEndpointTests : IClassFixture<LiensApiFactory>, IAsync
         row["action"]!.GetValue<string>().Should().Be("Liens Details");
         var fieldDescription = row["description"]!.GetValue<string>();
         fieldDescription.Should().StartWith("Lien Update. Changes:");
-        fieldDescription.Should().Contain("Funding Company: blank → Capital Fund LLC");
-        fieldDescription.Should().Contain("Case: blank → CASE-TEST-001 — John Plaintiff");
+        fieldDescription.Should().Contain("Funding Company: \"\" → Capital Fund LLC");
+        fieldDescription.Should().Contain("Case: \"\" → CASE-TEST-001 — John Plaintiff");
         fieldDescription.Should().NotContain(SeedHelper.FundingCompanyId.ToString());
         fieldDescription.Should().NotContain(SeedHelper.CaseId.ToString());
         fieldDescription.Should().Contain("Status: Open → Closed");
-        fieldDescription.Should().Contain("Purchase Date: blank → 06/22/2026");
-        fieldDescription.Should().Contain("Initial Service Date: blank → 07/07/2026");
-        fieldDescription.Should().Contain("End Service Date: blank → 07/03/2026");
-        fieldDescription.Should().Contain("Bulk: blank → Yes");
-        fieldDescription.Should().Contain("Servicing: blank → Yes");
-        fieldDescription.Should().Contain("Note: blank → Complete medical servicing update");
+        fieldDescription.Should().Contain("Purchase Date: \"\" → 06/22/2026");
+        fieldDescription.Should().Contain("Initial Service Date: \"\" → 07/07/2026");
+        fieldDescription.Should().Contain("End Service Date: \"\" → 07/03/2026");
+        fieldDescription.Should().Contain("Bulk: \"\" → Yes");
+        fieldDescription.Should().Contain("Servicing: \"\" → Yes");
+        fieldDescription.Should().Contain("Note: \"\" → Complete medical servicing update");
     }
 
     [Fact]

@@ -12,6 +12,9 @@ internal static class RootEntityHistoryFormatter
     internal static string BuildDescription(string activity, IReadOnlyCollection<LienFieldChange> changes) =>
         LienUpdateHistoryFormatter.BuildSingleDescription(activity, changes);
 
+    internal static string BuildCreationDescription(string activity, IReadOnlyCollection<LienFieldChange> fields) =>
+        LienUpdateHistoryFormatter.BuildCreationDescription(activity, fields);
+
     internal static string ExtractActivity(string description)
     {
         var changesIndex = description.IndexOf(" Changes:", StringComparison.Ordinal);

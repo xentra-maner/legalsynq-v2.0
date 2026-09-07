@@ -253,7 +253,8 @@ public sealed class LegacyUpdateHistoryEndpointTests
         var historyId = Guid.NewGuid();
         var unknownFacilityId = Guid.NewGuid();
         var description =
-            $"Lien Update. Changes: Organization ID: blank → {SeedHelper.OrgId}; " +
+            $"Lien Update. Changes: Status: Draft → Active; Seller Status: Active → Draft; " +
+            $"Note: Existing note → blank; Organization ID: blank → {SeedHelper.OrgId}; " +
             $"Case ID: blank → {SeedHelper.CaseId}; " +
             $"Selling Case ID: blank → {SeedHelper.CaseId}; " +
             $"Facility ID: {unknownFacilityId} → {SeedHelper.FacilityId}; " +
@@ -294,18 +295,22 @@ public sealed class LegacyUpdateHistoryEndpointTests
             .Single(item => item.GetProperty("id").GetString() == historyId.ToString());
         var enriched = row.GetProperty("description").GetString();
 
-        enriched.Should().Contain("Organization: blank → RL Liens1");
-        enriched.Should().Contain("Case: blank → CASE-TEST-001 — John Plaintiff");
-        enriched.Should().Contain("Selling Case: blank → CASE-TEST-001 — John Plaintiff");
+        row.GetProperty("action").GetString().Should().Be("Liens Details");
+        enriched.Should().Contain("Status: \"\" → Active");
+        enriched.Should().Contain("Seller Status: Active → \"\"");
+        enriched.Should().Contain("Note: Existing note → \"\"");
+        enriched.Should().Contain("Organization: \"\" → RL Liens1");
+        enriched.Should().Contain("Case: \"\" → CASE-TEST-001 — John Plaintiff");
+        enriched.Should().Contain("Selling Case: \"\" → CASE-TEST-001 — John Plaintiff");
         enriched.Should().Contain("Facility: Unavailable facility → Sunrise Clinic");
-        enriched.Should().Contain("Subject Party: blank → Jane Doe");
-        enriched.Should().Contain("Funding Company: blank → Capital Fund LLC");
-        enriched.Should().Contain("Funding Company Contact: blank → Capital Fund");
-        enriched.Should().Contain("Medical Provider: blank → City Medical Center");
-        enriched.Should().Contain("Medical Facility: blank → Sunrise Clinic");
-        enriched.Should().Contain("Selling Organization: blank → RL Liens1");
-        enriched.Should().Contain("Buying Organization: blank → RL Liens1");
-        enriched.Should().Contain("Holding Organization: blank → RL Liens1");
+        enriched.Should().Contain("Subject Party: \"\" → Jane Doe");
+        enriched.Should().Contain("Funding Company: \"\" → Capital Fund LLC");
+        enriched.Should().Contain("Funding Company Contact: \"\" → Capital Fund");
+        enriched.Should().Contain("Medical Provider: \"\" → City Medical Center");
+        enriched.Should().Contain("Medical Facility: \"\" → Sunrise Clinic");
+        enriched.Should().Contain("Selling Organization: \"\" → RL Liens1");
+        enriched.Should().Contain("Buying Organization: \"\" → RL Liens1");
+        enriched.Should().Contain("Holding Organization: \"\" → RL Liens1");
         enriched.Should().NotContain(" ID:");
         enriched.Should().NotContain(unknownFacilityId.ToString());
     }

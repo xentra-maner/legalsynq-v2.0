@@ -76,6 +76,8 @@ public static class PermissionCodes
     public const string TenantUsersManage       = "TENANT.users:manage";
     public const string TenantGroupsManage      = "TENANT.groups:manage";
     public const string TenantRolesAssign       = "TENANT.roles:assign";
+    public const string TenantRolesView         = "TENANT.roles:view";
+    public const string TenantRolesManage       = "TENANT.roles:manage";
     public const string TenantProductsAssign    = "TENANT.products:assign";
     public const string TenantSettingsManage    = "TENANT.settings:manage";
     public const string TenantAuditView         = "TENANT.audit:view";

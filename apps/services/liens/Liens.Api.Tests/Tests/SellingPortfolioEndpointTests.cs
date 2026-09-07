@@ -2668,12 +2668,13 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         var confirmBody = await confirmResponse.Content.ReadFromJsonAsync<ConfirmSellingLienSaleResponse>();
         var buyerToken = ExtractBuyerAccessToken(confirmBody!.Notification!.BuyerPortalUrl!);
         var sellerToken = ExtractBuyerAccessToken(confirmBody.SellerNotification!.SellerPortalUrl!);
+        var activatedBuyerUserId = Guid.CreateVersion7();
         using (var activationScope = _factory.Services.CreateScope())
         {
             var db = activationScope.ServiceProvider.GetRequiredService<LiensDbContext>();
             var buyerAccessLink = db.SellingBuyerAccessLinks.Single(link =>
                 link.TokenHash == SellingBuyerAccessLink.ComputeTokenHash(buyerToken));
-            buyerAccessLink.RecordAccountActivation(Guid.CreateVersion7(), "buyer.messages.account@capital.test");
+            buyerAccessLink.RecordAccountActivation(activatedBuyerUserId, "buyer.messages.account@capital.test");
             await db.SaveChangesAsync();
         }
 
@@ -2761,6 +2762,15 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
             db.SellingPortalMessages.Count(message => message.TenantId == SeedHelper.TenantId && message.LienId == lienId)
                 .Should().Be(2);
+            var messageOutbox = db.SellingNotificationOutboxItems
+                .Where(item => item.EventKey == NotificationTaxonomy.Liens.Events.OfferMessageCreated)
+                .ToList();
+            messageOutbox.Should().HaveCount(2);
+            messageOutbox.Should().ContainSingle(item => item.RecipientUserId == SeedHelper.UserId);
+            messageOutbox.Should().ContainSingle(item => item.RecipientUserId == activatedBuyerUserId);
+            messageOutbox.Should().OnlyContain(item =>
+                !item.Description.Contains("Can you confirm", StringComparison.Ordinal) &&
+                !item.Description.Contains("The LOP is final", StringComparison.Ordinal));
 
             var publisher = scope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>();
             publisher.Emails.Should().ContainSingle();

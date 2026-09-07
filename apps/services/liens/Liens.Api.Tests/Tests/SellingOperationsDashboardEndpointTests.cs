@@ -68,7 +68,7 @@ public class SellingOperationsDashboardEndpointTests : IClassFixture<LiensApiFac
     }
 
     [Fact]
-    public async Task Dashboard_returns_zeroes_and_complete_empty_aging_for_empty_period()
+    public async Task Dashboard_retains_global_totals_and_returns_empty_period_analytics()
     {
         var response = await _client.GetAsync(
             "/api/liens/selling/analytics/dashboard?startDate=2030-01-01&endDate=2030-01-31&compare=none");
@@ -79,13 +79,12 @@ public class SellingOperationsDashboardEndpointTests : IClassFixture<LiensApiFac
         body!.Currency.Should().Be("USD");
         body.ComparisonPeriod.Should().BeNull();
         body.Metrics.TotalLienRevenue.Value.Should().Be(0m);
-        body.Metrics.TotalLienRevenue.Formula.Should().Contain("OriginalAmount");
-        body.Metrics.TotalOutstanding.Value.Should().Be(0m);
+        body.Metrics.TotalLienRevenue.Formula.Should().Contain("PurchasePrice");
+        body.Metrics.TotalOutstanding.Value.Should().Be(5_000m);
         body.Metrics.TotalOutstanding.Formula.Should().Contain("CurrentBalance");
-        body.Metrics.Payments.Value.Should().Be(0m);
-        body.Metrics.PastAmountDue.IsAvailable.Should().BeFalse();
-        body.Metrics.PastAmountDue.Value.Should().BeNull();
-        body.Metrics.PastAmountDue.UnavailableReason.Should().Contain("operations dashboard");
+        body.Metrics.Payments.Value.Should().Be(4_500m);
+        body.Metrics.PastAmountDue.IsAvailable.Should().BeTrue();
+        body.Metrics.PastAmountDue.Value.Should().Be(0m);
         body.ArAging.IsAvailable.Should().BeTrue();
         body.ArAging.Total.Should().Be(0m);
         body.ArAging.Buckets.Should().HaveCount(5);
@@ -94,7 +93,9 @@ public class SellingOperationsDashboardEndpointTests : IClassFixture<LiensApiFac
         body.BuyerAging.Items.Should().BeEmpty();
         body.LienStatuses.Should().BeEmpty();
         body.SellerStatuses.Should().BeEmpty();
-        body.TimeSeries.Should().BeEmpty();
+        body.TimeSeries.Should().HaveCount(12);
+        body.TimeSeries.Should().OnlyContain(point =>
+            point.LienCount == 0 && point.LienRevenue == 0m && point.OutstandingAmount == 0m);
         body.TopBuyers.Should().BeEmpty();
     }
 
@@ -172,6 +173,7 @@ public class SellingOperationsDashboardEndpointTests : IClassFixture<LiensApiFac
         buyerAging.Total.Should().Be(6_050m);
         buyerAging.PastDuePercent.Should().Be(94.88m);
         buyerAging.Buckets.Should().BeEquivalentTo(body.ArAging.Buckets);
+        body.Metrics.PastAmountDue.Value.Should().Be(5_740m);
     }
 
     [Fact]
@@ -181,6 +183,10 @@ public class SellingOperationsDashboardEndpointTests : IClassFixture<LiensApiFac
         var currentEnd = CreateLien("CURRENT-END", new DateOnly(2026, 1, 31), 2_000m, 1_500m);
         var previous = CreateLien("PREVIOUS", new DateOnly(2025, 12, 1), 500m, 400m);
         var outside = CreateLien("OUTSIDE", new DateOnly(2025, 11, 30), 9_000m, 9_000m);
+        currentStart.ListForSale(800m, SeedHelper.UserId);
+        currentStart.MarkSold(750m, Guid.CreateVersion7(), SeedHelper.UserId);
+        currentEnd.ListForSale(1_700m, SeedHelper.UserId);
+        currentEnd.MarkSold(1_500m, Guid.CreateVersion7(), SeedHelper.UserId);
 
         await SeedAsync(db =>
         {
@@ -214,17 +220,15 @@ public class SellingOperationsDashboardEndpointTests : IClassFixture<LiensApiFac
         body.Period.DateBasis.Should().Be("initialServiceDate");
         body.ComparisonPeriod!.StartDate.Should().Be(new DateOnly(2025, 12, 1));
         body.ComparisonPeriod.EndDate.Should().Be(new DateOnly(2025, 12, 31));
-        body.Metrics.TotalLienRevenue.Value.Should().Be(3_000m);
-        body.Metrics.TotalLienRevenue.ComparisonValue.Should().Be(500m);
-        body.Metrics.TotalLienRevenue.ChangeAmount.Should().Be(2_500m);
-        body.Metrics.TotalLienRevenue.ChangePercent.Should().Be(500m);
-        body.Metrics.TotalOutstanding.Value.Should().Be(2_100m);
-        body.Metrics.TotalOutstanding.ComparisonValue.Should().Be(400m);
-        body.Metrics.Payments.Value.Should().Be(250m);
-        body.Metrics.Payments.ComparisonValue.Should().Be(100m);
-        body.TimeSeries.Should().ContainSingle();
-        body.TimeSeries[0].BucketStart.Should().Be(new DateOnly(2026, 1, 1));
-        body.TimeSeries[0].LienRevenue.Should().Be(3_000m);
+        body.Metrics.TotalLienRevenue.Value.Should().Be(2_250m);
+        body.Metrics.TotalLienRevenue.ComparisonValue.Should().BeNull();
+        body.Metrics.TotalOutstanding.Value.Should().Be(16_500m);
+        body.Metrics.TotalOutstanding.ComparisonValue.Should().BeNull();
+        body.Metrics.Payments.Value.Should().Be(4_850m);
+        body.Metrics.Payments.ComparisonValue.Should().BeNull();
+        body.TimeSeries.Should().HaveCount(12);
+        body.TimeSeries.Single(point => point.BucketStart == new DateOnly(2026, 1, 1))
+            .LienRevenue.Should().Be(3_000m);
     }
 
     [Fact]
@@ -232,6 +236,8 @@ public class SellingOperationsDashboardEndpointTests : IClassFixture<LiensApiFac
     {
         var included = CreateLien("CANONICAL-SELLER", new DateOnly(2026, 2, 10), 1_000m, 800m);
         SetLienOwnership(included, Guid.CreateVersion7(), SeedHelper.OrgId);
+        included.ListForSale(900m, SeedHelper.UserId);
+        included.MarkSold(850m, Guid.CreateVersion7(), SeedHelper.UserId);
         var conflictingLegacyOrg = CreateLien(
             "CONFLICTING-LEGACY-ORG",
             new DateOnly(2026, 2, 10),
@@ -254,8 +260,8 @@ public class SellingOperationsDashboardEndpointTests : IClassFixture<LiensApiFac
 
         var body = await response.Content.ReadFromJsonAsync<SellingOperationsDashboardResponse>();
         body.Should().NotBeNull();
-        body!.Metrics.TotalLienRevenue.Value.Should().Be(1_000m);
-        body.Metrics.TotalOutstanding.Value.Should().Be(800m);
+        body!.Metrics.TotalLienRevenue.Value.Should().Be(850m);
+        body.Metrics.TotalOutstanding.Value.Should().Be(5_800m);
         body.LienStatuses.Sum(item => item.LienCount).Should().Be(1);
     }
 
@@ -315,6 +321,7 @@ public class SellingOperationsDashboardEndpointTests : IClassFixture<LiensApiFac
         var sold = CreateLien("TOP-BUYER", new DateOnly(2026, 4, 15), 4_000m, 2_500m);
         sold.ListForSale(3_500m, SeedHelper.UserId);
         sold.MarkSold(3_000m, buyerOrgId, SeedHelper.UserId);
+        sold.Activate(SeedHelper.UserId);
         var olderAcceptedOffer = LienOffer.Create(
             SeedHelper.TenantId,
             sold.Id,

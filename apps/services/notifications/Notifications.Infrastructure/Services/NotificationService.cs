@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Notifications.Application.DTOs;
@@ -27,6 +28,7 @@ public class NotificationServiceImpl : INotificationService
     private readonly ISmsProviderAdapter _twilioAdapter;
     private readonly ISmsProviderRuntimeResolver _smsRuntimeResolver;
     private readonly IRecipientResolver _recipientResolver;
+    private readonly IUserInboxService _userInboxService;
     private readonly IAuditEventClient _auditClient;
     private readonly SmsCostAnalyticsOptions _costOptions;
     // LS-NOTIF-SMS-014: intelligent routing engine + decision persistence
@@ -63,6 +65,7 @@ public class NotificationServiceImpl : INotificationService
         ISmsProviderAdapter twilioAdapter,
         ISmsProviderRuntimeResolver smsRuntimeResolver,
         IRecipientResolver recipientResolver,
+        IUserInboxService userInboxService,
         IAuditEventClient auditClient,
         IOptions<SmsCostAnalyticsOptions> costOptions,
         ISmsRoutingEngine smsRoutingEngine,
@@ -88,6 +91,7 @@ public class NotificationServiceImpl : INotificationService
         _twilioAdapter           = twilioAdapter;
         _smsRuntimeResolver      = smsRuntimeResolver;
         _recipientResolver       = recipientResolver;
+        _userInboxService        = userInboxService;
         _auditClient             = auditClient;
         _costOptions             = costOptions.Value;
         _smsRoutingEngine        = smsRoutingEngine;
@@ -103,10 +107,14 @@ public class NotificationServiceImpl : INotificationService
 
     public async Task<NotificationResultDto> SubmitAsync(Guid tenantId, SubmitNotificationDto request)
     {
+        request.Channel = NormalizeChannel(request.Channel);
         var recipientJson = JsonSerializer.Serialize(request.Recipient);
         JsonElement recipientEl;
         try { recipientEl = JsonDocument.Parse(recipientJson).RootElement.Clone(); }
         catch { recipientEl = default; }
+
+        if (request.Channel == "in_app")
+            ValidateInboxRequest(request, recipientEl);
 
         var mode = ReadRecipientMode(recipientEl);
         var isFanOut = recipientEl.ValueKind == JsonValueKind.Array
@@ -1866,20 +1874,38 @@ public class NotificationServiceImpl : INotificationService
         notification.RenderedSubject   = renderedSubject;
         notification.RenderedBody      = renderedBody;
         notification.RenderedText      = renderedText;
-        notification.Status            = "processing";
 
-        notification = await _notificationRepo.CreateAsync(notification);
-        await _metering.MeterAsync(new MeterEventInput { TenantId = tenantId, UsageUnit = "api_notification_request", Channel = request.Channel, NotificationId = notification.Id });
-
-        // In-app deliveries have no provider — the persisted Notification is the delivery.
-        if (string.Equals(request.Channel, "in-app", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(request.Channel, "inapp",  StringComparison.OrdinalIgnoreCase))
+        // In-app deliveries have no provider. Persist the operational row and
+        // personal inbox projection atomically in one DbContext save.
+        if (request.Channel == "in_app")
         {
             notification.Status = "sent";
-            await _notificationRepo.UpdateAsync(notification);
+            using var recipientDocument = JsonDocument.Parse(recipientJson);
+            var recipientUserId = Guid.Parse(ReadRecipientField(recipientDocument.RootElement, "userId")!);
+            try
+            {
+                await _userInboxService.CreateWithNotificationAsync(
+                    notification,
+                    recipientUserId,
+                    effectiveProductKey!,
+                    request.EventKey!,
+                    request.InboxPresentation!);
+            }
+            catch (DbUpdateException) when (!string.IsNullOrWhiteSpace(request.IdempotencyKey))
+            {
+                var winner = await _notificationRepo.FindByIdempotencyKeyAsync(tenantId, request.IdempotencyKey);
+                if (winner is not null) return MapToResult(winner);
+                throw;
+            }
+
+            await _metering.MeterAsync(new MeterEventInput { TenantId = tenantId, UsageUnit = "api_notification_request", Channel = request.Channel, NotificationId = notification.Id });
             try { await _auditClient.IngestAsync(new IngestAuditEventRequest { EventType = "notification.sent", Action = "notification.sent", SourceSystem = "notifications", Description = "In-app notification persisted", Scope = new AuditEventScopeDto { TenantId = tenantId.ToString() } }); } catch { }
             return MapToResult(notification);
         }
+
+        notification.Status = "processing";
+        notification = await _notificationRepo.CreateAsync(notification);
+        await _metering.MeterAsync(new MeterEventInput { TenantId = tenantId, UsageUnit = "api_notification_request", Channel = request.Channel, NotificationId = notification.Id });
 
         await ExecuteSendLoopAsync(tenantId, notification);
         return MapToResult(notification);
@@ -1895,7 +1921,7 @@ public class NotificationServiceImpl : INotificationService
             "email"                 => string.IsNullOrWhiteSpace(r.Email)  ? "no_email_on_file"  : null,
             "sms"                   => string.IsNullOrWhiteSpace(r.Phone)  ? "no_phone_on_file"  : null,
             "push"                  => string.IsNullOrWhiteSpace(r.UserId) ? "no_user_for_push"  : null,
-            "in-app" or "inapp"     => string.IsNullOrWhiteSpace(r.UserId) ? "no_user_for_inapp" : null,
+            "in_app"                 => string.IsNullOrWhiteSpace(r.UserId) ? "no_user_for_inapp" : null,
             _                       => null,
         };
     }
@@ -2043,6 +2069,59 @@ public class NotificationServiceImpl : INotificationService
             OverrideReason = src.OverrideReason,
             Severity       = src.Severity,
             Category       = src.Category,
+            InboxPresentation = src.InboxPresentation,
+        };
+    }
+
+    private static string NormalizeChannel(string? channel)
+    {
+        var normalized = channel?.Trim().ToLowerInvariant() ?? string.Empty;
+        return normalized is "in-app" or "inapp" or "in_app" ? "in_app" : normalized;
+    }
+
+    private static void ValidateInboxRequest(SubmitNotificationDto request, JsonElement recipient)
+    {
+        if (string.IsNullOrWhiteSpace(request.IdempotencyKey))
+            throw new ArgumentException("idempotencyKey is required for in_app notifications.");
+        if (request.IdempotencyKey.Length > 255)
+            throw new ArgumentException("idempotencyKey cannot exceed 255 characters.");
+        if (!string.Equals(request.ProductKey, "liens", StringComparison.Ordinal))
+            throw new ArgumentException("productKey must be liens for the Selling inbox.");
+        if (request.EventKey is not (
+            "lien.offer.submitted" or
+            "lien.offer.accepted" or
+            "lien.offer.rejected" or
+            "lien.offer.message.created"))
+            throw new ArgumentException("eventKey is not supported by the Selling inbox.");
+        if (!Guid.TryParse(ReadRecipientField(recipient, "userId"), out var recipientUserId) || recipientUserId == Guid.Empty)
+            throw new ArgumentException("A concrete GUID recipient userId is required for in_app notifications.");
+
+        var presentation = request.InboxPresentation
+            ?? throw new ArgumentException("inboxPresentation is required for in_app notifications.");
+        presentation.Category = (presentation.Category ?? string.Empty).Trim().ToLowerInvariant();
+        presentation.Title = (presentation.Title ?? string.Empty).Trim();
+        presentation.Description = (presentation.Description ?? string.Empty).Trim();
+        presentation.SourceDisplayName = (presentation.SourceDisplayName ?? string.Empty).Trim();
+        presentation.SourceInitials = (presentation.SourceInitials ?? string.Empty).Trim();
+
+        if (presentation.Category is not ("lien" or "message"))
+            throw new ArgumentException("inboxPresentation.category must be lien or message.");
+        if (presentation.Title.Length is < 1 or > 160)
+            throw new ArgumentException("inboxPresentation.title must be between 1 and 160 characters.");
+        if (presentation.Description.Length is < 1 or > 500)
+            throw new ArgumentException("inboxPresentation.description must be between 1 and 500 characters.");
+        if (presentation.SourceDisplayName.Length is < 1 or > 160)
+            throw new ArgumentException("inboxPresentation.sourceDisplayName must be between 1 and 160 characters.");
+        if (presentation.SourceInitials.Length is < 1 or > 8)
+            throw new ArgumentException("inboxPresentation.sourceInitials must be between 1 and 8 characters.");
+        if (presentation.OccurredAtUtc == default)
+            throw new ArgumentException("inboxPresentation.occurredAtUtc is required.");
+
+        presentation.OccurredAtUtc = presentation.OccurredAtUtc.Kind switch
+        {
+            DateTimeKind.Utc => presentation.OccurredAtUtc,
+            DateTimeKind.Local => presentation.OccurredAtUtc.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(presentation.OccurredAtUtc, DateTimeKind.Utc),
         };
     }
 

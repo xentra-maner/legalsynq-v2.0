@@ -11,6 +11,7 @@
 - [Cases](#cases-endpoints)
 - [Bills of Sale](#bills-of-sale-endpoints)
 - [Lien Offers](#lien-offers-endpoints)
+- [Selling In-App Notifications](#selling-in-app-notifications)
 - [Contacts](#contacts-endpoints)
 - [Settlement Reductions](#settlement-reduction-endpoints)
 - [Settlement Payments](#settlement-payment-endpoints)
@@ -1351,6 +1352,24 @@ requires service JWT auth for producer submissions.
 
 ---
 
+## Selling In-App Notifications
+
+Selling write endpoints do not expose a separate notification response contract. When an eligible business mutation
+succeeds, Liens atomically writes a typed row to `liens_SellingNotificationOutbox`; a background worker later submits
+it to Notifications as canonical channel `in_app` with a deterministic idempotency key.
+
+| Event | Recipient |
+|---|---|
+| `lien.offer.submitted` | Authenticated submitting user, or the activated platform user associated with a public buyer link |
+| `lien.offer.accepted` / `lien.offer.rejected` | The platform user stored in `LienOffer.SubmittedByPlatformUserId`; access-link responses also notify the platform seller who created the affected link |
+| `lien.offer.message.created` | Seller link creator for buyer-authored messages; activated platform buyer for seller-authored messages |
+
+No inbox event is enqueued when a concrete Identity platform user is unavailable; existing email delivery is unchanged.
+Message inbox descriptions contain generic sender and lien context only and exclude message bodies, attachments, medical
+information, and document excerpts. Offer acceptance emits no additional `lien.sale.finalized` inbox item.
+
+---
+
 ## Cases Endpoints
 
 Base path: `/api/liens/cases`
@@ -1573,11 +1592,15 @@ no lien association. Those records remain available from `case-updates/v3`; ever
 row returned by `liens-updates/v3` represents a specific lien and includes its
 `lienId`, tenant-scoped `lienCode`, and `action`. Lien codes are resolved by the history row's lien ID, including after the lien has moved to another case. Native lien mutations compare
 the persisted previous values with the resulting values. `Lien Created` descriptions
-include only Lien Code, Status, Purchase Date, and Initial Service Date when present;
-later updates and deletions record every changed business field as `previous → new`.
+include only Lien Code, Status, Purchase Date, and Initial Service Date when present.
+Creation fields show their current values without a `blank →` prefix, and an initial
+Draft status is shown as `""`; later updates and deletions record every changed business
+field as `previous → new`.
 Unchanged submissions do not create a change row. The retained fields are stored in one text-backed activity row. Selling handlers and other direct EF mutations use the same save-boundary comparison, including creation, archive, restore, deletion, and public buyer-response transitions. A move between cases writes the same activity projection to both the former and resulting case timelines.
-Native lien-change rows use the `Liens Details` action label. Obsolete `Lien Update`
-servicing compatibility rows are omitted from the timeline to avoid duplicate entries.
+Native lien-change rows use the `Liens Details` action label. In those response
+descriptions, `blank` and `Draft` field values are rendered as `""`. Obsolete
+`Lien Update` servicing compatibility rows are omitted from the timeline to avoid
+duplicate entries.
 `POST /api/liens/cases/liens/update-medical` accepts servicing corrections for
 `Settled` liens while continuing to reject edits to declined, withdrawn, and
 cancelled liens. When any submitted value changes, the endpoint appends exactly one
@@ -2369,7 +2392,9 @@ The tenant portal Payments tab uses `GET` and `POST /api/liens/cases/{caseId}/pa
   `Idempotency-Key` header. The body requires positive `amount`, `paymentDate`,
   `paymentMethod`, `referenceNumber`, and one or more unique `allocations` containing `lienId`
   and positive `amount`. Allocation totals must equal the payment amount and cannot exceed any
-  lien's outstanding selling balance. `detailsContext`, `notes`, `settlementType`,
+  lien's outstanding selling balance. When the payment amount exceeds the selected liens'
+  combined available balance, the `400` response identifies the `amount` field and includes that
+  available balance as its client-facing error message. `detailsContext`, `notes`, `settlementType`,
   `settlementStatus`, and `lienStatus` are optional. All allocation rows share one `receiptId`
   and payment number and are written in one transaction with any requested lien-status changes
   and audit event.

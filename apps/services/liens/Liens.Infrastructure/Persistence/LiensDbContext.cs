@@ -1,6 +1,7 @@
 using BuildingBlocks.Domain;
 using Liens.Application.Services;
 using Liens.Domain.Entities;
+using Liens.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 
@@ -45,6 +46,7 @@ public class LiensDbContext : DbContext
     public DbSet<SellingIdempotencyRecord> SellingIdempotencyRecords => Set<SellingIdempotencyRecord>();
     public DbSet<SellingPortalMessage> SellingPortalMessages => Set<SellingPortalMessage>();
     public DbSet<SellingPortalMessageAttachment> SellingPortalMessageAttachments => Set<SellingPortalMessageAttachment>();
+    public DbSet<SellingNotificationOutboxItem> SellingNotificationOutboxItems => Set<SellingNotificationOutboxItem>();
     public DbSet<BillOfSale> BillsOfSale => Set<BillOfSale>();
     public DbSet<ServicingItem> ServicingItems => Set<ServicingItem>();
     public DbSet<LienTask> LienTasks => Set<LienTask>();
@@ -271,7 +273,12 @@ public class LiensDbContext : DbContext
             if (entry.State == EntityState.Modified && changes.Count == 0)
                 continue;
             var historyChanges = entry.State == EntityState.Added
-                ? changes.Where(change => LienCreationHistoryFields.Contains(change.Field)).ToList()
+                ? changes
+                    .Where(change => LienCreationHistoryFields.Contains(change.Field))
+                    .Select(change => change.Field == "Status" && entry.Entity.Status == LienStatus.Draft
+                        ? change with { NewValue = string.Empty }
+                        : change)
+                    .ToList()
                 : changes;
 
             var oldCaseId = entry.State == EntityState.Added
@@ -306,7 +313,9 @@ public class LiensDbContext : DbContext
                     }
                 }
             }
-            var description = RootEntityHistoryFormatter.BuildDescription(activity, historyChanges);
+            var description = entry.State == EntityState.Added
+                ? RootEntityHistoryFormatter.BuildCreationDescription(activity, historyChanges)
+                : RootEntityHistoryFormatter.BuildDescription(activity, historyChanges);
             var actorUserId = ResolveActor(entry.Entity.CreatedByUserId, entry.Entity.UpdatedByUserId);
             var visibleCaseIds = new[] { oldCaseId, newCaseId }
                 .Where(caseId => caseId.HasValue)
@@ -338,7 +347,9 @@ public class LiensDbContext : DbContext
                         $"Lien Deleted. {semanticActivity}",
                     _ => semanticActivity,
                 };
-                var enrichedDescription = RootEntityHistoryFormatter.BuildDescription(semanticActivity, historyChanges);
+                var enrichedDescription = entry.State == EntityState.Added
+                    ? RootEntityHistoryFormatter.BuildCreationDescription(semanticActivity, historyChanges)
+                    : RootEntityHistoryFormatter.BuildDescription(semanticActivity, historyChanges);
                 primary.ReplacePendingDescription(enrichedDescription);
                 semanticProjections.Add((primary.CaseId, enrichedDescription));
             }

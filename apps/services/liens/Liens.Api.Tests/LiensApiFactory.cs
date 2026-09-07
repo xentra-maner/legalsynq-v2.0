@@ -398,6 +398,15 @@ internal sealed class CapturingNotificationPublisher : INotificationPublisher
         CancellationToken ct = default)
         => Task.CompletedTask;
 
+    public Task<NotificationInboxSendResult> SubmitInboxAsync(
+        NotificationInboxSendRequest request,
+        CancellationToken ct = default)
+        => Task.FromResult(new NotificationInboxSendResult(
+            true,
+            false,
+            Guid.CreateVersion7(),
+            null));
+
     public Task<NotificationEmailSendResult> SendEmailAsync(
         string notificationType,
         Guid tenantId,

@@ -1,0 +1,215 @@
+{
+  "info": {
+    "_postman_id": "0596d92a-8e89-4eaf-acdf-b750a87c0bd3",
+    "name": "LegalSynq Notifications - Selling Inbox",
+    "description": "Backend-only Selling notification workflow for the Notifications service.\n\nSetup:\n1. Import the paired `notifications-selling-inbox.postman_environment.json` environment.\n2. Set `serviceBearerToken` to a Notifications-accepted service JWT (must include `svc` and the target tenant claim).\n3. Set `userBearerToken` to the recipient user's JWT (must include GUID `sub` and `tenant_id`, and must not include `svc`).\n4. Set `recipientUserId` to that user's GUID.\n5. Run `Submit Selling In-App Notification`; it stores `notificationId`.\n6. Run the inbox requests. `List Inbox` stores `inboxItemId` and `asOfUtc` when an item is returned.\n\nThe submission endpoint is service-only. Inbox endpoints are user-only and scope tenant/user exclusively from JWT claims. Do not send medical information, legal-document excerpts, attachments, or message bodies in `inboxPresentation.description`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 - Service Submission",
+      "item": [
+        {
+          "name": "Submit Selling In-App Notification",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const stamp = Date.now();",
+                  "pm.environment.set('idempotencyKey', `postman:selling:offer:${stamp}:submitted:${pm.environment.get('recipientUserId')}`);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.expect(json.id, 'notification id').to.be.a('string').and.not.empty;",
+                  "pm.expect(json.status, 'status').to.eql('sent');",
+                  "pm.environment.set('notificationId', json.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{serviceBearerToken}}", "type": "string" }]
+            },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"channel\": \"in_app\",\n  \"productKey\": \"liens\",\n  \"eventKey\": \"lien.offer.submitted\",\n  \"sourceSystem\": \"liens-service\",\n  \"idempotencyKey\": \"{{idempotencyKey}}\",\n  \"recipient\": {\n    \"mode\": \"UserId\",\n    \"userId\": \"{{recipientUserId}}\"\n  },\n  \"message\": {\n    \"type\": \"lien.offer.submitted\"\n  },\n  \"inboxPresentation\": {\n    \"category\": \"lien\",\n    \"title\": \"Offer Submitted\",\n    \"description\": \"Your offer for lien {{lienNumber}} was submitted.\",\n    \"sourceDisplayName\": \"Synq Selling\",\n    \"sourceInitials\": \"SS\",\n    \"occurredAtUtc\": \"{{$isoTimestamp}}\"\n  }\n}"
+            },
+            "url": "{{notificationsBaseUrl}}/v1/notifications",
+            "description": "Creates the operational sent notification and its personal inbox item atomically. Supported event keys: lien.offer.submitted, lien.offer.accepted, lien.offer.rejected, lien.offer.message.created. Re-run with the same `idempotencyKey` to exercise replay behavior."
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 - User Inbox",
+      "item": [
+        {
+          "name": "List Inbox",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.expect(json).to.include.keys(['items', 'page', 'pageSize', 'totalCount', 'totalPages', 'asOfUtc', 'counts']);",
+                  "pm.environment.set('asOfUtc', json.asOfUtc);",
+                  "if (json.items && json.items.length) { pm.environment.set('inboxItemId', json.items[0].id); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{userBearerToken}}", "type": "string" }]
+            },
+            "url": "{{notificationsBaseUrl}}/v1/inbox?category={{category}}&readState={{readState}}&page={{page}}&pageSize={{pageSize}}",
+            "description": "Lists only the authenticated user's non-dismissed inbox items and stores `asOfUtc`. category: all|lien|message. readState: all|unread."
+          }
+        },
+        {
+          "name": "List Inbox Using Captured Snapshot",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.expect(pm.response.json().asOfUtc).to.eql(pm.environment.get('asOfUtc'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{userBearerToken}}", "type": "string" }]
+            },
+            "url": "{{notificationsBaseUrl}}/v1/inbox?category={{category}}&readState={{readState}}&page={{page}}&pageSize={{pageSize}}&asOfUtc={{asOfUtc}}",
+            "description": "Use after `List Inbox` and set `page` to retrieve a stable numbered page. Items materialized after the captured snapshot are excluded."
+          }
+        },
+        {
+          "name": "Inbox Summary",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.expect(pm.response.json()).to.include.keys(['unreadCount', 'asOfUtc', 'items']);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{userBearerToken}}", "type": "string" }]
+            },
+            "url": "{{notificationsBaseUrl}}/v1/inbox/summary?limit={{summaryLimit}}",
+            "description": "Returns the authenticated user's unread count and latest visible items. limit is 1 through 10."
+          }
+        },
+        {
+          "name": "Mark One Item Read",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.expect(json.id).to.eql(pm.environment.get('inboxItemId'));",
+                  "pm.expect(json.isRead).to.eql(true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{userBearerToken}}", "type": "string" }]
+            },
+            "url": "{{notificationsBaseUrl}}/v1/inbox/{{inboxItemId}}/read",
+            "description": "Idempotently marks an owned, visible item read. An inaccessible or dismissed item returns 404."
+          }
+        },
+        {
+          "name": "Mark All Read Through Snapshot",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.expect(pm.response.json()).to.include.keys(['affectedCount', 'unreadCount', 'completedAtUtc']);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{userBearerToken}}", "type": "string" }]
+            },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"throughUtc\": \"{{asOfUtc}}\"\n}"
+            },
+            "url": "{{notificationsBaseUrl}}/v1/inbox/mark-all-read",
+            "description": "Marks the authenticated user's unread visible items through the captured list snapshot. Newer notifications remain unread."
+          }
+        },
+        {
+          "name": "Dismiss One Item",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{userBearerToken}}", "type": "string" }]
+            },
+            "url": "{{notificationsBaseUrl}}/v1/inbox/{{inboxItemId}}",
+            "description": "Idempotently soft-dismisses an owned item. A dismissed item is retained for auditing but no longer appears in lists or counts."
+          }
+        }
+      ]
+    }
+  ]
+}

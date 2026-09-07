@@ -19,7 +19,15 @@ public static class NotificationEndpoints
         group.MapPost("/", async (HttpContext context, INotificationService service, ILoggerFactory loggerFactory, SubmitNotificationDto request) =>
         {
             var tenantId = context.GetTenantId();
-            var result = await service.SubmitAsync(tenantId, request);
+            NotificationResultDto result;
+            try
+            {
+                result = await service.SubmitAsync(tenantId, request);
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
 
             if (result.Status != "sent" && result.Status != "blocked")
             {

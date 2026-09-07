@@ -680,6 +680,51 @@ public sealed class SellingCompanyEndpointTests : IClassFixture<LiensApiFactory>
     }
 
     [Fact]
+    public async Task Create_contact_person_rejects_a_duplicate_email_across_companies()
+    {
+        var lawFirm = await CreateCompanyAsync(new
+        {
+            companyTypeId = CompanyDirectoryReferenceData.LawFirmId,
+            name = "Duplicate Email Law",
+        });
+        var medicalFacility = await CreateCompanyAsync(new
+        {
+            companyTypeId = CompanyDirectoryReferenceData.MedicalFacilityId,
+            name = "Duplicate Email Facility",
+        });
+        var lawFirmRole = CompanyDirectoryReferenceData.ContactPersonTypes
+            .First(value => value.CompanyTypeId == CompanyDirectoryReferenceData.LawFirmId);
+        var medicalFacilityRole = CompanyDirectoryReferenceData.ContactPersonTypes
+            .First(value => value.CompanyTypeId == CompanyDirectoryReferenceData.MedicalFacilityId);
+
+        await CreateContactAsync(lawFirm.Id, lawFirmRole.Id, "Avery", "Stone", "avery@example.test");
+
+        var response = await SendMutationAsync(
+            HttpMethod.Post,
+            $"/api/liens/selling/companies/{medicalFacility.Id}/contacts",
+            new
+            {
+                contactPersonTypeId = medicalFacilityRole.Id,
+                firstName = "Taylor",
+                lastName = "Reed",
+                email = "AVERY@example.test",
+            });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest, await response.Content.ReadAsStringAsync());
+        var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        body!.RootElement.GetProperty("error").GetProperty("message").GetString()
+            .Should().Be("A contact person with this email address already exists.");
+        body.RootElement.GetProperty("error").GetProperty("details").GetProperty("email")[0].GetString()
+            .Should().Be("A contact person with this email address already exists.");
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        (await db.CompanyContactPersons.CountAsync(contact =>
+            contact.TenantId == SeedHelper.TenantId &&
+            contact.Email == "avery@example.test")).Should().Be(1);
+    }
+
+    [Fact]
     public async Task Contact_role_must_belong_to_company_type()
     {
         var company = await CreateCompanyAsync(new
@@ -1078,12 +1123,12 @@ public sealed class SellingCompanyEndpointTests : IClassFixture<LiensApiFactory>
     }
 
     private async Task<CompanyContactPersonResponse> CreateContactAsync(
-        Guid companyId, Guid contactPersonTypeId, string firstName, string lastName)
+        Guid companyId, Guid contactPersonTypeId, string firstName, string lastName, string? email = null)
     {
         var response = await SendMutationAsync(
             HttpMethod.Post,
             $"/api/liens/selling/companies/{companyId}/contacts",
-            new { contactPersonTypeId, firstName, lastName });
+            new { contactPersonTypeId, firstName, lastName, email });
         response.StatusCode.Should().Be(HttpStatusCode.Created, await response.Content.ReadAsStringAsync());
         return (await response.Content.ReadFromJsonAsync<CompanyContactPersonResponse>())!;
     }

@@ -152,6 +152,12 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy(Policies.AuthenticatedUser, policy =>
         policy.RequireAuthenticatedUser());
 
+    options.AddPolicy(Policies.NotificationInboxUser, policy =>
+        policy
+            .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
+            .RequireAuthenticatedUser()
+            .RequireAssertion(context => NotificationInboxAuthorization.IsUserPrincipal(context.User)));
+
     options.AddPolicy(Policies.AdminOnly, policy =>
         policy.RequireRole(Roles.PlatformAdmin));
 
@@ -257,6 +263,7 @@ app.UseMiddleware<TenantMiddleware>();
 
 app.MapHealthEndpoints();
 app.MapNotificationEndpoints();
+app.MapUserInboxEndpoints();
 app.MapAdminNotificationEndpoints();
 app.MapTemplateEndpoints();
 app.MapGlobalTemplateEndpoints();

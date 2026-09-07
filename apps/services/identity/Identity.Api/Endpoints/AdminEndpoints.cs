@@ -98,10 +98,25 @@ public static class AdminEndpoints
             .RequirePermission(PermCodes.TenantUsersView);
         routes.MapGet("/api/admin/users/{id:guid}", GetUser)
             .RequirePermission(PermCodes.TenantUsersView);
+        // Tenant-portal User Management: create an active user with an admin-set password.
+        routes.MapPost("/api/admin/users",          CreateUserWithPassword)
+            .RequirePermission(PermCodes.TenantUsersManage);
+        // Tenant-portal User Management: edit a user's profile (name / email / title).
+        routes.MapPatch("/api/admin/users/{id:guid}", UpdateUserProfile)
+            .RequirePermission(PermCodes.TenantUsersManage);
 
         // ── Roles ──────────────────────────────────────────────────────────
-        routes.MapGet("/api/admin/roles",           ListRoles);
-        routes.MapGet("/api/admin/roles/{id:guid}", GetRole);
+        routes.MapGet("/api/admin/roles",           ListRoles)
+            .RequirePermission(PermCodes.TenantRolesView);
+        routes.MapGet("/api/admin/roles/{id:guid}", GetRole)
+            .RequirePermission(PermCodes.TenantRolesView);
+        // Tenant-portal Role Management: create / edit / delete custom tenant roles.
+        routes.MapPost("/api/admin/roles",           CreateRole)
+            .RequirePermission(PermCodes.TenantRolesManage);
+        routes.MapPut("/api/admin/roles/{id:guid}",  UpdateRole)
+            .RequirePermission(PermCodes.TenantRolesManage);
+        routes.MapDelete("/api/admin/roles/{id:guid}", DeleteRole)
+            .RequirePermission(PermCodes.TenantRolesManage);
 
         // ── Products catalog (tenant-accessible) ────────────────────────
         routes.MapGet("/api/admin/products",        ListProducts);
@@ -1682,6 +1697,7 @@ public static class AdminEndpoints
                                .Select(ut => ut.Tenant.Code)
                                .FirstOrDefault(),
                 createdAtUtc = u.CreatedAtUtc,
+                updatedAtUtc = u.UpdatedAtUtc,
             })
             .ToListAsync();
 
@@ -1781,6 +1797,214 @@ public static class AdminEndpoints
             .ToListAsync(ct);
 
         return Results.Ok(new { items, totalCount = items.Count });
+    }
+
+    /// <summary>
+    /// POST /api/admin/users
+    ///
+    /// Tenant-portal User Management: creates a new, active user with an
+    /// admin-set password, links them to the tenant, and optionally assigns an
+    /// initial global role and a primary organization membership — all in one
+    /// transaction. This is the counterpart to <see cref="InviteUser"/> for the
+    /// flow where the administrator sets the initial credentials directly.
+    ///
+    /// Access: TENANT.users:manage (TenantAdmin / PlatformAdmin bypass). The
+    /// target tenant must match the caller's tenant unless the caller is a
+    /// PlatformAdmin.
+    ///
+    /// 201 { userId } · 400 validation · 403 cross-tenant · 404 tenant not found
+    /// · 409 email already exists on the platform.
+    /// </summary>
+    private static async Task<IResult> CreateUserWithPassword(
+        AdminCreateUserRequest body,
+        ClaimsPrincipal        caller,
+        IdentityDbContext      db,
+        IPasswordHasher        passwordHasher,
+        IAuditEventClient      auditClient,
+        CancellationToken      ct)
+    {
+        if (body.TenantId == Guid.Empty)
+            return Results.BadRequest(new { error = "tenantId is required." });
+        if (string.IsNullOrWhiteSpace(body.Email))
+            return Results.BadRequest(new { error = "email is required." });
+        if (string.IsNullOrWhiteSpace(body.FirstName))
+            return Results.BadRequest(new { error = "firstName is required." });
+        if (string.IsNullOrWhiteSpace(body.LastName))
+            return Results.BadRequest(new { error = "lastName is required." });
+        if (string.IsNullOrWhiteSpace(body.Password) || body.Password.Length < 8)
+            return Results.BadRequest(new { error = "Password must be at least 8 characters." });
+
+        if (IsCrossTenantAccess(caller, body.TenantId))
+            return Results.Forbid();
+
+        var tenant = await db.Tenants.FirstOrDefaultAsync(t => t.Id == body.TenantId, ct);
+        if (tenant is null)
+            return Results.NotFound(new { error = $"Tenant '{body.TenantId}' not found." });
+
+        var emailLower = body.Email.ToLowerInvariant().Trim();
+        if (await db.Users.AnyAsync(u => u.Email == emailLower, ct))
+            return Results.Conflict(new { error = "A user with this email already exists." });
+
+        Organization? org = null;
+        if (body.OrganizationId is { } orgId && orgId != Guid.Empty)
+        {
+            org = await db.Organizations.FirstOrDefaultAsync(o => o.Id == orgId, ct);
+            if (org is null || org.TenantId != body.TenantId)
+                return Results.BadRequest(new { error = "organizationId does not belong to this tenant." });
+        }
+
+        Role? role = null;
+        if (body.RoleId is { } roleId && roleId != Guid.Empty)
+        {
+            role = await db.Roles.FindAsync([roleId], ct);
+            if (role is null)
+                return Results.BadRequest(new { error = $"Role '{roleId}' not found." });
+        }
+
+        var callerIdStr = caller.FindFirstValue(ClaimTypes.NameIdentifier) ?? caller.FindFirstValue("sub");
+        var callerId    = Guid.TryParse(callerIdStr, out var cid) ? (Guid?)cid : null;
+
+        var user = User.Create(
+            body.TenantId,
+            emailLower,
+            passwordHasher.Hash(body.Password),
+            body.FirstName.Trim(),
+            body.LastName.Trim());
+        db.Users.Add(user);
+        db.UserTenants.Add(UserTenant.Create(user.Id, body.TenantId));
+
+        if (org is not null)
+            await EnsureUserOrganizationMembershipForInviteAsync(db, user.Id, org.Id, ct);
+
+        if (role is not null)
+            db.ScopedRoleAssignments.Add(ScopedRoleAssignment.Create(
+                user.Id, role.Id, ScopedRoleAssignment.ScopeTypes.Global,
+                tenantId: body.TenantId, assignedByUserId: callerId));
+
+        await db.SaveChangesAsync(ct);
+
+        var now = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "identity.user.created",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Visibility    = VisibilityScope.Tenant,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = now,
+            Scope  = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = body.TenantId.ToString() },
+            Actor  = new AuditEventActorDto { Id = callerIdStr, Type = ActorType.User, Name = "admin" },
+            Entity = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
+            Action      = "UserCreated",
+            Description = $"Admin created user '{user.Email}' in tenant {body.TenantId}.",
+            After       = JsonSerializer.Serialize(new
+            {
+                userId = user.Id,
+                email  = user.Email,
+                tenantId = body.TenantId,
+                roleId = role?.Id,
+                organizationId = org?.Id,
+            }),
+            IdempotencyKey = IdempotencyKey.For("identity-service", "identity.user.created", user.Id.ToString()),
+            Tags = ["user-management", "provisioning"],
+        });
+
+        return Results.Created($"/api/admin/users/{user.Id}", new { userId = user.Id });
+    }
+
+    /// <summary>
+    /// PATCH /api/admin/users/{id}
+    ///
+    /// Tenant-portal User Management: updates a user's editable profile fields
+    /// (first/last name, email, optional title). Fields left null are unchanged;
+    /// first and last name must be supplied together. Changing the email bumps
+    /// the user's session version (existing JWTs are invalidated).
+    ///
+    /// Access: TENANT.users:manage (TenantAdmin / PlatformAdmin bypass).
+    /// Tenant-scoped for non-PlatformAdmin callers.
+    ///
+    /// 200 { id, firstName, lastName, email, title, updatedAtUtc } · 400 validation
+    /// · 403 cross-tenant · 404 not found · 409 email already in use.
+    /// Emits identity.user.profile_updated when a field actually changed.
+    /// </summary>
+    private static async Task<IResult> UpdateUserProfile(
+        Guid                     id,
+        UpdateUserProfileRequest body,
+        ClaimsPrincipal          caller,
+        IdentityDbContext        db,
+        IAuditEventClient        auditClient,
+        CancellationToken        ct)
+    {
+        var hasFirst = body.FirstName is not null;
+        var hasLast  = body.LastName  is not null;
+        if (hasFirst ^ hasLast)
+            return Results.BadRequest(new { error = "firstName and lastName must be provided together." });
+        if (hasFirst && (string.IsNullOrWhiteSpace(body.FirstName) || string.IsNullOrWhiteSpace(body.LastName)))
+            return Results.BadRequest(new { error = "firstName and lastName cannot be blank." });
+
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id, ct);
+        if (user is null) return Results.NotFound();
+        if (await IsCrossTenantAccessAsync(caller, user.Id, db, ct)) return Results.Forbid();
+
+        var opTenantId = await GetOperationalTenantIdAsync(caller, user.Id, db, ct);
+        var before = new { user.FirstName, user.LastName, user.Email, user.Title };
+
+        var changed = false;
+
+        if (!string.IsNullOrWhiteSpace(body.Email))
+        {
+            var emailLower = body.Email.ToLowerInvariant().Trim();
+            if (!string.Equals(user.Email, emailLower, StringComparison.Ordinal))
+            {
+                if (await db.Users.AnyAsync(u => u.Email == emailLower && u.Id != id, ct))
+                    return Results.Conflict(new { error = "A user with this email already exists." });
+                changed |= user.ChangeEmail(emailLower);
+            }
+        }
+
+        if (hasFirst)
+            changed |= user.UpdateName(body.FirstName!, body.LastName!);
+
+        if (body.Title is not null)
+            changed |= user.SetTitle(body.Title);
+
+        if (changed)
+        {
+            await db.SaveChangesAsync(ct);
+
+            var callerIdStr = caller.FindFirstValue(ClaimTypes.NameIdentifier) ?? caller.FindFirstValue("sub");
+            var now = DateTimeOffset.UtcNow;
+            _ = auditClient.IngestAsync(new IngestAuditEventRequest
+            {
+                EventType     = "identity.user.profile_updated",
+                EventCategory = EventCategory.Administrative,
+                SourceSystem  = "identity-service",
+                SourceService = "admin-api",
+                Visibility    = VisibilityScope.Tenant,
+                Severity      = SeverityLevel.Info,
+                OccurredAtUtc = now,
+                Scope  = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = opTenantId.ToString() },
+                Actor  = new AuditEventActorDto { Id = callerIdStr, Type = ActorType.User, Name = "admin" },
+                Entity = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
+                Action      = "UserProfileUpdated",
+                Description = $"Admin updated profile for user '{user.Email}' in tenant {opTenantId}.",
+                Before      = JsonSerializer.Serialize(before),
+                After       = JsonSerializer.Serialize(new { user.FirstName, user.LastName, user.Email, user.Title }),
+                IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "identity-service", "identity.user.profile_updated", user.Id.ToString()),
+                Tags = ["user-management", "profile"],
+            });
+        }
+
+        return Results.Ok(new
+        {
+            id           = user.Id,
+            firstName    = user.FirstName,
+            lastName     = user.LastName,
+            email        = user.Email,
+            title        = user.Title,
+            updatedAtUtc = user.UpdatedAtUtc,
+        });
     }
 
     private static async Task<IResult> GetUser(
@@ -2816,13 +3040,25 @@ public static class AdminEndpoints
 
     private static async Task<IResult> ListRoles(
         IdentityDbContext db,
+        ClaimsPrincipal   caller,
         int    page     = 1,
         int    pageSize = 20,
-        string scope    = "")
+        string scope    = "",
+        string tenantId = "")
     {
         var q = db.Roles.AsQueryable();
         if (!string.IsNullOrWhiteSpace(scope))
             q = q.Where(r => r.Scope == scope);
+
+        // Tenant scoping: non-PlatformAdmin callers always see only their own
+        // tenant's roles (this excludes the LegalSynq-tenant system roles, so a
+        // fresh tenant lists zero roles). PlatformAdmin may pass an explicit
+        // tenantId filter.
+        var callerTenantRaw = caller.FindFirstValue("tenant_id");
+        if (!caller.IsInRole("PlatformAdmin") && Guid.TryParse(callerTenantRaw, out var callerTid))
+            q = q.Where(r => r.TenantId == callerTid);
+        else if (!string.IsNullOrWhiteSpace(tenantId) && Guid.TryParse(tenantId, out var filterTid))
+            q = q.Where(r => r.TenantId == filterTid);
 
         var total = await q.CountAsync();
 
@@ -2850,8 +3086,16 @@ public static class AdminEndpoints
             .Select(g => new { roleId = g.Key, count = g.Count() })
             .ToListAsync();
 
+        var permCodeRows = await db.RolePermissionAssignments
+            .Where(a => roleIds.Contains(a.RoleId))
+            .Select(a => new { a.RoleId, a.Permission.Code })
+            .ToListAsync();
+
         var userCountMap = userCounts.ToDictionary(x => x.roleId, x => x.count);
         var capCountMap  = capCounts.ToDictionary(x => x.roleId, x => x.count);
+        var permCodeMap  = permCodeRows
+            .GroupBy(x => x.RoleId)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.Code).OrderBy(c => c, StringComparer.Ordinal).ToArray());
 
         // UIX-002-C: resolve product metadata for non-system roles
         var productRoles = await db.ProductRoles
@@ -2881,7 +3125,9 @@ public static class AdminEndpoints
                     : null,
                 userCount       = userCountMap.GetValueOrDefault(r.Id, 0),
                 permissionCount = capCountMap.GetValueOrDefault(r.Id, 0),
-                permissions     = Array.Empty<string>(),
+                permissions     = permCodeMap.GetValueOrDefault(r.Id, Array.Empty<string>()),
+                createdAtUtc    = r.CreatedAtUtc,
+                updatedAtUtc    = r.UpdatedAtUtc,
             };
         });
 
@@ -2894,12 +3140,15 @@ public static class AdminEndpoints
         });
     }
 
-    private static async Task<IResult> GetRole(Guid id, IdentityDbContext db)
+    private static async Task<IResult> GetRole(Guid id, IdentityDbContext db, ClaimsPrincipal caller)
     {
         var r = await db.Roles
             .FirstOrDefaultAsync(r => r.Id == id);
 
         if (r is null) return Results.NotFound();
+
+        // Non-PlatformAdmin callers may only read roles within their own tenant.
+        if (IsCrossTenantAccess(caller, r.TenantId)) return Results.NotFound();
 
         var userCount = await db.ScopedRoleAssignments
             .CountAsync(s => s.RoleId == id && s.IsActive
@@ -2938,6 +3187,270 @@ public static class AdminEndpoints
             updatedAtUtc        = r.UpdatedAtUtc,
         });
     }
+
+    // ── Tenant-portal Role Management (create / update / delete custom roles) ──
+
+    /// <summary>
+    /// POST /api/admin/roles
+    ///
+    /// Creates a custom, tenant-scoped role (<c>IsSystemRole = false</c>,
+    /// <c>Scope = "Tenant"</c>) with an initial permission set. Access:
+    /// TENANT.roles:manage (TenantAdmin / PlatformAdmin bypass). Non-admin
+    /// callers may only grant permissions they themselves hold.
+    ///
+    /// 201 { role } · 400 validation / unknown permission · 403 delegation
+    /// · 409 name already used in the tenant.
+    /// </summary>
+    private static async Task<IResult> CreateRole(
+        CreateRoleRequest body,
+        ClaimsPrincipal   caller,
+        IdentityDbContext db,
+        IAuditEventClient auditClient,
+        string            tenantId = "",
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(body.Name))
+            return Results.BadRequest(new { error = "name is required.", code = "VALIDATION" });
+        var name = body.Name.Trim();
+        if (name.Length > 200)
+            return Results.BadRequest(new { error = "name cannot exceed 200 characters.", code = "VALIDATION" });
+        var description = string.IsNullOrWhiteSpace(body.Description) ? null : body.Description.Trim();
+        if (description is { Length: > 1000 })
+            return Results.BadRequest(new { error = "description cannot exceed 1000 characters.", code = "VALIDATION" });
+
+        var opTenantId = ResolveRoleTenant(caller, tenantId);
+        if (opTenantId == Guid.Empty)
+            return Results.BadRequest(new { error = "tenantId is required.", code = "VALIDATION" });
+
+        if (await db.Roles.AnyAsync(r => r.TenantId == opTenantId && r.Name.ToLower() == name.ToLower(), ct))
+            return Results.Conflict(new { error = "A role with this name already exists.", code = "ROLE_NAME_CONFLICT" });
+
+        var (permissions, permError) = await ResolvePermissionsAsync(db, caller, body.PermissionCodes, ct);
+        if (permError is not null) return permError;
+
+        var callerId = ParseCallerId(caller);
+        var role = Role.Create(opTenantId, name, description, isSystemRole: false, scope: RoleScopes.Tenant);
+        db.Roles.Add(role);
+        foreach (var permission in permissions)
+            db.RolePermissionAssignments.Add(RolePermissionAssignment.Create(role.Id, permission.Id, callerId));
+
+        await db.SaveChangesAsync(ct);
+
+        var codes = permissions.Select(p => p.Code).OrderBy(c => c, StringComparer.Ordinal).ToArray();
+        EmitRoleAudit(auditClient, caller, "identity.role.created", "RoleCreated", opTenantId, role.Id,
+            before: null,
+            after: new { role.Id, role.Name, role.Description, permissionCodes = codes });
+
+        return Results.Created($"/api/admin/roles/{role.Id}", RoleSummary(role, codes));
+    }
+
+    /// <summary>
+    /// PUT /api/admin/roles/{id}
+    ///
+    /// Renames / re-describes a custom role and replaces its entire permission
+    /// set. Blocks system roles (409 SYSTEM_ROLE). Bumps the access version of
+    /// every user currently holding the role so the change takes effect on their
+    /// next /auth/me. Access: TENANT.roles:manage.
+    /// </summary>
+    private static async Task<IResult> UpdateRole(
+        Guid              id,
+        UpdateRoleRequest body,
+        ClaimsPrincipal   caller,
+        IdentityDbContext db,
+        IAuditEventClient auditClient,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(body.Name))
+            return Results.BadRequest(new { error = "name is required.", code = "VALIDATION" });
+        var name = body.Name.Trim();
+        if (name.Length > 200)
+            return Results.BadRequest(new { error = "name cannot exceed 200 characters.", code = "VALIDATION" });
+        var description = string.IsNullOrWhiteSpace(body.Description) ? null : body.Description.Trim();
+        if (description is { Length: > 1000 })
+            return Results.BadRequest(new { error = "description cannot exceed 1000 characters.", code = "VALIDATION" });
+
+        var role = await db.Roles
+            .Include(r => r.RolePermissionAssignments)
+            .FirstOrDefaultAsync(r => r.Id == id, ct);
+        if (role is null) return Results.NotFound();
+        if (IsCrossTenantAccess(caller, role.TenantId)) return Results.Forbid();
+        if (role.IsSystemRole)
+            return Results.Conflict(new { error = "System roles cannot be edited.", code = "SYSTEM_ROLE" });
+
+        if (!string.Equals(role.Name, name, StringComparison.OrdinalIgnoreCase) &&
+            await db.Roles.AnyAsync(r => r.TenantId == role.TenantId && r.Id != id && r.Name.ToLower() == name.ToLower(), ct))
+            return Results.Conflict(new { error = "A role with this name already exists.", code = "ROLE_NAME_CONFLICT" });
+
+        var (permissions, permError) = await ResolvePermissionsAsync(db, caller, body.PermissionCodes, ct);
+        if (permError is not null) return permError;
+
+        var currentPermIds = role.RolePermissionAssignments.Select(a => a.PermissionId).ToList();
+        var beforeCodes = await db.Permissions
+            .Where(p => currentPermIds.Contains(p.Id))
+            .Select(p => p.Code)
+            .ToListAsync(ct);
+        beforeCodes.Sort(StringComparer.Ordinal);
+
+        role.Update(name, description);
+
+        var desiredIds = permissions.Select(p => p.Id).ToHashSet();
+        var currentIds = role.RolePermissionAssignments.Select(a => a.PermissionId).ToHashSet();
+        var callerId = ParseCallerId(caller);
+        foreach (var toRemove in role.RolePermissionAssignments.Where(a => !desiredIds.Contains(a.PermissionId)).ToList())
+            db.RolePermissionAssignments.Remove(toRemove);
+        foreach (var permission in permissions.Where(p => !currentIds.Contains(p.Id)))
+            db.RolePermissionAssignments.Add(RolePermissionAssignment.Create(role.Id, permission.Id, callerId));
+
+        // Invalidate cached claims for everyone currently holding this role.
+        var holderIds = await db.ScopedRoleAssignments
+            .Where(s => s.RoleId == id && s.IsActive && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global)
+            .Select(s => s.UserId)
+            .Distinct()
+            .ToListAsync(ct);
+        if (holderIds.Count > 0)
+        {
+            var holders = await db.Users.Where(u => holderIds.Contains(u.Id)).ToListAsync(ct);
+            foreach (var holder in holders) holder.IncrementAccessVersion();
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        var afterCodes = permissions.Select(p => p.Code).OrderBy(c => c, StringComparer.Ordinal).ToArray();
+        EmitRoleAudit(auditClient, caller, "identity.role.updated", "RoleUpdated", role.TenantId, role.Id,
+            before: new { permissionCodes = beforeCodes },
+            after: new { role.Name, role.Description, permissionCodes = afterCodes });
+
+        return Results.Ok(RoleSummary(role, afterCodes));
+    }
+
+    /// <summary>
+    /// DELETE /api/admin/roles/{id}
+    ///
+    /// Permanently deletes a custom role and its permission assignments. Blocks
+    /// system roles (409 SYSTEM_ROLE) and roles currently assigned to any user
+    /// (409 ROLE_IN_USE). Access: TENANT.roles:manage.
+    /// </summary>
+    private static async Task<IResult> DeleteRole(
+        Guid              id,
+        ClaimsPrincipal   caller,
+        IdentityDbContext db,
+        IAuditEventClient auditClient,
+        CancellationToken ct = default)
+    {
+        var role = await db.Roles.FirstOrDefaultAsync(r => r.Id == id, ct);
+        if (role is null) return Results.NotFound();
+        if (IsCrossTenantAccess(caller, role.TenantId)) return Results.Forbid();
+        if (role.IsSystemRole)
+            return Results.Conflict(new { error = "System roles cannot be deleted.", code = "SYSTEM_ROLE" });
+
+        if (await db.ScopedRoleAssignments.AnyAsync(s => s.RoleId == id && s.IsActive, ct))
+            return Results.Conflict(new { error = "This role is assigned to users and cannot be deleted.", code = "ROLE_IN_USE" });
+
+        var assignments = await db.RolePermissionAssignments.Where(a => a.RoleId == id).ToListAsync(ct);
+        db.RolePermissionAssignments.RemoveRange(assignments);
+        var staleScoped = await db.ScopedRoleAssignments.Where(s => s.RoleId == id).ToListAsync(ct);
+        db.ScopedRoleAssignments.RemoveRange(staleScoped);
+        db.Roles.Remove(role);
+
+        await db.SaveChangesAsync(ct);
+
+        EmitRoleAudit(auditClient, caller, "identity.role.deleted", "RoleDeleted", role.TenantId, role.Id,
+            before: new { role.Name, role.Description },
+            after: null);
+
+        return Results.NoContent();
+    }
+
+    private static Guid ResolveRoleTenant(ClaimsPrincipal caller, string tenantIdParam)
+    {
+        if (!caller.IsInRole("PlatformAdmin"))
+        {
+            var raw = caller.FindFirstValue("tenant_id");
+            return Guid.TryParse(raw, out var tid) ? tid : Guid.Empty;
+        }
+        return Guid.TryParse(tenantIdParam, out var explicitTid) ? explicitTid : Guid.Empty;
+    }
+
+    private static Guid? ParseCallerId(ClaimsPrincipal caller) =>
+        Guid.TryParse(caller.FindFirstValue(ClaimTypes.NameIdentifier) ?? caller.FindFirstValue("sub"), out var cid)
+            ? cid : null;
+
+    private static async Task<(List<Permission> Permissions, IResult? Error)> ResolvePermissionsAsync(
+        IdentityDbContext db, ClaimsPrincipal caller, IReadOnlyList<string>? requestedCodes, CancellationToken ct)
+    {
+        var codes = (requestedCodes ?? [])
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .Select(c => c.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        if (codes.Count == 0)
+            return ([], Results.BadRequest(new { error = "At least one permission is required.", code = "VALIDATION" }));
+
+        var permissions = await db.Permissions
+            .Where(p => p.IsActive && codes.Contains(p.Code))
+            .ToListAsync(ct);
+
+        if (permissions.Count != codes.Count)
+        {
+            var found = permissions.Select(p => p.Code).ToHashSet(StringComparer.Ordinal);
+            var unknown = codes.Where(c => !found.Contains(c)).ToArray();
+            return ([], Results.BadRequest(new { error = $"Unknown or inactive permission(s): {string.Join(", ", unknown)}", code = "INVALID_PERMISSION" }));
+        }
+
+        // Delegation guard: non-admin callers may only grant permissions they hold.
+        if (!caller.IsInRole("PlatformAdmin") && !caller.IsInRole("TenantAdmin"))
+        {
+            var held = caller.FindAll("permissions").Select(x => x.Value).ToHashSet(StringComparer.Ordinal);
+            var missing = codes.Where(c => !held.Contains(c)).ToArray();
+            if (missing.Length > 0)
+                return ([], Results.Json(
+                    new { error = $"You cannot grant permission(s) you do not hold: {string.Join(", ", missing)}", code = "PERMISSION_NOT_DELEGABLE" },
+                    statusCode: 403));
+        }
+
+        return (permissions, null);
+    }
+
+    private static void EmitRoleAudit(
+        IAuditEventClient auditClient, ClaimsPrincipal caller, string eventType, string action,
+        Guid tenantId, Guid roleId, object? before, object? after)
+    {
+        var callerIdStr = caller.FindFirstValue(ClaimTypes.NameIdentifier) ?? caller.FindFirstValue("sub");
+        var now = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = eventType,
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Visibility    = VisibilityScope.Tenant,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = now,
+            Scope  = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = tenantId.ToString() },
+            Actor  = new AuditEventActorDto { Id = callerIdStr, Type = ActorType.User, Name = "admin" },
+            Entity = new AuditEventEntityDto { Type = "Role", Id = roleId.ToString() },
+            Action      = action,
+            Description = $"{action} for role {roleId} in tenant {tenantId}.",
+            Before      = before is null ? null : JsonSerializer.Serialize(before),
+            After       = after  is null ? null : JsonSerializer.Serialize(after),
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "identity-service", eventType, roleId.ToString()),
+            Tags = ["user-management", "roles"],
+        });
+    }
+
+    private static object RoleSummary(Role role, IReadOnlyList<string> codes) => new
+    {
+        id              = role.Id,
+        name            = role.Name,
+        description     = role.Description ?? "",
+        isSystemRole    = role.IsSystemRole,
+        scope           = role.Scope,
+        permissions     = codes,
+        permissionCount = codes.Count,
+        createdAtUtc    = role.CreatedAtUtc,
+        updatedAtUtc    = role.UpdatedAtUtc,
+    };
 
     // =========================================================================
     // AUDIT LOGS
@@ -6151,6 +6664,42 @@ public static class AdminEndpoints
         string? OrganizationName = null,
         string? OrganizationType = null,
         string? OrganizationDisplayName = null);
+
+    /// <summary>
+    /// Tenant-portal User Management: create an active user with an admin-set
+    /// password (as opposed to the invite-by-email flow in <see cref="InviteUserRequest"/>).
+    /// </summary>
+    private record AdminCreateUserRequest(
+        Guid    TenantId,
+        string  Email,
+        string  FirstName,
+        string  LastName,
+        string  Password,
+        Guid?   RoleId         = null,
+        Guid?   OrganizationId = null);
+
+    /// <summary>
+    /// Tenant-portal User Management: patch a user's editable profile fields.
+    /// Any field left null is left unchanged. First/last name must be supplied
+    /// together.
+    /// </summary>
+    private record UpdateUserProfileRequest(
+        string? FirstName = null,
+        string? LastName  = null,
+        string? Email     = null,
+        string? Title     = null);
+
+    /// <summary>Tenant-portal Role Management: create a custom tenant role.</summary>
+    private record CreateRoleRequest(
+        string  Name,
+        string? Description,
+        IReadOnlyList<string>? PermissionCodes);
+
+    /// <summary>Tenant-portal Role Management: rename/re-describe a role and replace its permission set.</summary>
+    private record UpdateRoleRequest(
+        string  Name,
+        string? Description,
+        IReadOnlyList<string> PermissionCodes);
 
     /// <summary>PUM-B06: Payload for inviting a PlatformInternal (staff) user.</summary>
     private record InvitePlatformUserRequest(

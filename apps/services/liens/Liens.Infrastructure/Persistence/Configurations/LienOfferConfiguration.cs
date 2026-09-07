@@ -36,6 +36,7 @@ public class LienOfferConfiguration : IEntityTypeConfiguration<LienOffer>
 
         builder.Property(o => o.ExternalReference)
             .HasMaxLength(200);
+        builder.Property(o => o.SubmittedByPlatformUserId);
 
         builder.Property(o => o.OfferedAtUtc).IsRequired();
         builder.Property(o => o.ExpiresAtUtc);

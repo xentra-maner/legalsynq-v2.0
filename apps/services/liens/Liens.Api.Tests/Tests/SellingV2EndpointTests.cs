@@ -1337,6 +1337,8 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
         db.LienOffers.Count(offer => offer.LienId == lienId).Should().Be(1);
+        db.SellingNotificationOutboxItems.Count(item => item.EventKey == "lien.offer.submitted")
+            .Should().Be(0, "a public contact id must not be treated as an Identity platform user");
     }
 
     [Fact]
@@ -1358,7 +1360,11 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
-        db.SellingBuyerAccessLinks.Single(link => link.LienId == lienId).ResponseStatus.Should().Be("Declined");
+        var link = db.SellingBuyerAccessLinks.Single(link => link.LienId == lienId);
+        link.ResponseStatus.Should().Be("Declined");
+        var outbox = db.SellingNotificationOutboxItems.Single(item =>
+            item.EventKey == "lien.offer.rejected" && item.IdempotencyKey.Contains(link.Id.ToString("N")));
+        outbox.RecipientUserId.Should().Be(link.CreatedByUserId!.Value);
     }
 
     [Fact]

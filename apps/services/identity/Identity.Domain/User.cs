@@ -231,6 +231,42 @@ public class User
     }
 
     /// <summary>
+    /// Updates the user's first and last name. Both parts are required — a name
+    /// is treated as a pair. Trims surrounding whitespace. Idempotent: returns
+    /// false (and touches nothing) when neither part changes.
+    /// </summary>
+    public bool UpdateName(string firstName, string lastName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(firstName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(lastName);
+        var f = firstName.Trim();
+        var l = lastName.Trim();
+        if (string.Equals(FirstName, f, StringComparison.Ordinal) &&
+            string.Equals(LastName, l, StringComparison.Ordinal)) return false;
+        FirstName    = f;
+        LastName     = l;
+        UpdatedAtUtc = DateTime.UtcNow;
+        return true;
+    }
+
+    /// <summary>
+    /// Changes the user's email (a login identifier). Lowercased and trimmed to
+    /// match <see cref="Create"/>. Bumps <see cref="SessionVersion"/> so existing
+    /// JWTs are invalidated. Idempotent: returns false when unchanged.
+    /// Uniqueness is enforced by the caller and the database index.
+    /// </summary>
+    public bool ChangeEmail(string email)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(email);
+        var e = email.ToLowerInvariant().Trim();
+        if (string.Equals(Email, e, StringComparison.Ordinal)) return false;
+        Email          = e;
+        SessionVersion++;
+        UpdatedAtUtc   = DateTime.UtcNow;
+        return true;
+    }
+
+    /// <summary>
     /// PUM-B01: Updates the user type classification.
     /// Idempotent — safe to call when the value is unchanged.
     /// </summary>

@@ -7,7 +7,8 @@ Authentication, user management, organisations, roles, product access, and RBAC 
 ## Responsibilities
 
 - JWT issuance and validation
-- User create / invite / activate / deactivate
+- User create / invite / edit profile / activate / deactivate
+- Tenant custom role management (create / edit / delete, permission assignment)
 - Tenant provisioning (canonical create, downstream to Tenant service)
 - Organisation and multi-org membership
 - Product enablement / disablement per tenant
@@ -43,6 +44,13 @@ Identity.Api.Tests/      Integration and unit tests
 | `GET` | `/api/auth/device-sessions` | List the authenticated user's active device sessions |
 | `POST` | `/api/users` | Create user |
 | `GET` | `/api/users` | List users (tenant-scoped) |
+| `GET` | `/api/admin/users` | Tenant-portal User Management: paginated, tenant-scoped user list (`page`, `pageSize`, `search`, `status`); items include `primaryOrg`, `createdAtUtc`, and `updatedAtUtc`. `TENANT.users:view`. |
+| `POST` | `/api/admin/users` | Tenant-portal User Management: create an **active** user with an admin-set password (min 8 chars) plus optional `roleId` and `organizationId`, in one transaction. `409` if the email already exists on the platform. `TENANT.users:manage`. Emits `identity.user.created`. |
+| `PATCH` | `/api/admin/users/{id}` | Tenant-portal User Management: edit `firstName`/`lastName` (supplied together), `email` (bumps session version, `409` on conflict), and optional `title`. `TENANT.users:manage`. Emits `identity.user.profile_updated` when a field changes. |
+| `GET` | `/api/admin/roles` | Role list. For non-PlatformAdmin callers it is **tenant-scoped** (own-tenant custom roles only — a fresh tenant lists none); PlatformAdmin sees all, optionally filtered by `scope`/`tenantId`. Items include `permissions` (codes), `permissionCount`, `userCount`, `createdAtUtc`, `updatedAtUtc`. `TENANT.roles:view`. |
+| `POST` | `/api/admin/roles` | Tenant-portal Role Management: create a custom role (`Scope = "Tenant"`) with `{ name, description?, permissionCodes[] }`. `409` on duplicate name in the tenant, `400` on unknown permission, `403` when a non-admin grants a permission they don't hold. `TENANT.roles:manage`. Emits `identity.role.created`. |
+| `PUT` | `/api/admin/roles/{id}` | Tenant-portal Role Management: rename/re-describe a role and **replace** its permission set; bumps the access version of current holders. `409 SYSTEM_ROLE` for system roles, `409 ROLE_NAME_CONFLICT`, `403` cross-tenant. `TENANT.roles:manage`. Emits `identity.role.updated`. |
+| `DELETE` | `/api/admin/roles/{id}` | Tenant-portal Role Management: hard-delete a custom role + its permission assignments. `409 SYSTEM_ROLE`, `409 ROLE_IN_USE` when assigned to any active user. `TENANT.roles:manage`. Emits `identity.role.deleted`. |
 | `POST` | `/api/internal/tenant-provisioning/provision` | Internal: full tenant provision |
 | `GET` | `/api/internal/users/account-exists` | Internal: trusted product services can check whether an email already belongs to an Identity account |
 | `GET` | `/api/internal/users/{userId}/display` | Internal: trusted product services can resolve a tenant-scoped user's first/last display name from `idt_Users`; optional `organizationId` also accepts active org membership in that tenant |

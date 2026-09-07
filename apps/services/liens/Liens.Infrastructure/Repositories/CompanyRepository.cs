@@ -405,6 +405,17 @@ public sealed class CompanyRepository : ICompanyRepository
             .FirstOrDefaultAsync(value => value.TenantId == tenantId && value.Id == id &&
                 value.Company!.OrgId == orgId, ct);
 
+    public Task<bool> ContactPersonEmailExistsAsync(
+        Guid tenantId, string email, Guid? excludingId = null, CancellationToken ct = default)
+    {
+        var normalizedEmail = email.Trim().ToUpperInvariant();
+        return _db.CompanyContactPersons.AsNoTracking().AnyAsync(value =>
+            value.TenantId == tenantId &&
+            value.Email != null &&
+            value.Email.ToUpper() == normalizedEmail &&
+            (!excludingId.HasValue || value.Id != excludingId.Value), ct);
+    }
+
     public Task<List<CompanyContactPerson>> GetContactPersonsByIdsAsync(
         Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default)
         => ids.Count == 0

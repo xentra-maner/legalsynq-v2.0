@@ -269,6 +269,7 @@ public sealed class CompanyService : ICompanyService
             throw new ConflictException("Contacts cannot be added to an inactive company.");
         ValidateContact(request.ContactPersonTypeId, request.FirstName, request.LastName,
             request.AddressLine1, request.City, request.State, request.PostalCode, request.Phone, request.Email);
+        await EnsureContactEmailIsUniqueAsync(tenantId, request.Email, ct: ct);
         await RequireMatchingRoleAsync(tenantId, orgId, company, request.ContactPersonTypeId, ct);
 
         var contact = CompanyContactPerson.Create(
@@ -293,6 +294,7 @@ public sealed class CompanyService : ICompanyService
         var contact = await RequireContactAsync(tenantId, companyId, contactId, ct);
         if (!contact.IsActive)
             throw new ConflictException("Inactive contacts cannot be updated.");
+        await EnsureContactEmailIsUniqueAsync(tenantId, request.Email, contactId, ct);
 
         contact.Update(request.ContactPersonTypeId, request.FirstName, request.LastName, actingUserId,
             request.AddressLine1, request.City, request.State, request.PostalCode, request.Phone, request.Email);
@@ -373,6 +375,17 @@ public sealed class CompanyService : ICompanyService
         var role = await _repository.GetContactPersonTypeAsync(tenantId, orgId, roleId, ct);
         if (role is null || !role.IsActive || role.CompanyTypeId != company.CompanyTypeId)
             throw Validation("contactPersonTypeId", "Contact-person type is invalid, inactive, or does not belong to the company's type.");
+    }
+
+    private async Task EnsureContactEmailIsUniqueAsync(
+        Guid tenantId, string? email, Guid? excludingId = null, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(email) ||
+            !await _repository.ContactPersonEmailExistsAsync(tenantId, email, excludingId, ct))
+            return;
+
+        const string message = "A contact person with this email address already exists.";
+        throw new ValidationException(message, new Dictionary<string, string[]> { ["email"] = [message] });
     }
 
     private static void ValidateContactPersonType(CreateContactPersonTypeRequest request)

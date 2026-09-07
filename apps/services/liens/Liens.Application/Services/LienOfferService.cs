@@ -14,6 +14,7 @@ public sealed class LienOfferService : ILienOfferService
     private readonly ILienRepository _lienRepo;
     private readonly IAuditPublisher _audit;
     private readonly INotificationPublisher _notifications;
+    private readonly ISellingNotificationOutbox _notificationOutbox;
     private readonly ILogger<LienOfferService> _logger;
 
     private static readonly IReadOnlySet<string> OfferableStatuses = new HashSet<string>
@@ -27,12 +28,14 @@ public sealed class LienOfferService : ILienOfferService
         ILienRepository lienRepo,
         IAuditPublisher audit,
         INotificationPublisher notifications,
+        ISellingNotificationOutbox notificationOutbox,
         ILogger<LienOfferService> logger)
     {
         _offerRepo = offerRepo;
         _lienRepo = lienRepo;
         _audit = audit;
         _notifications = notifications;
+        _notificationOutbox = notificationOutbox;
         _logger = logger;
     }
 
@@ -110,7 +113,20 @@ public sealed class LienOfferService : ILienOfferService
             offerAmount: request.OfferAmount,
             createdByUserId: actingUserId,
             notes: request.Notes,
-            expiresAtUtc: request.ExpiresAtUtc);
+            expiresAtUtc: request.ExpiresAtUtc,
+            submittedByPlatformUserId: actingUserId);
+
+        _notificationOutbox.Enqueue(new NotificationInboxSendRequest(
+            tenantId,
+            actingUserId,
+            BuildingBlocks.Notifications.NotificationTaxonomy.Liens.Events.OfferSubmitted,
+            "lien",
+            "Offer Submitted",
+            $"Your offer for lien {lien.LienNumber} was submitted.",
+            "Synq Selling",
+            "SS",
+            entity.OfferedAtUtc,
+            $"selling:offer:{entity.Id:N}:submitted:{actingUserId:N}"));
 
         await _offerRepo.AddAsync(entity, ct);
 

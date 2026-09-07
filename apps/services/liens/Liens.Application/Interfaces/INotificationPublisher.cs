@@ -8,6 +8,10 @@ public interface INotificationPublisher
         Dictionary<string, string> data,
         CancellationToken ct = default);
 
+    Task<NotificationInboxSendResult> SubmitInboxAsync(
+        NotificationInboxSendRequest request,
+        CancellationToken ct = default);
+
     Task<NotificationEmailSendResult> SendEmailAsync(
         string notificationType,
         Guid tenantId,
@@ -18,6 +22,24 @@ public interface INotificationPublisher
         CancellationToken ct = default,
         NotificationEmailSendOptions? options = null);
 }
+
+public sealed record NotificationInboxSendRequest(
+    Guid TenantId,
+    Guid RecipientUserId,
+    string EventKey,
+    string Category,
+    string Title,
+    string Description,
+    string SourceDisplayName,
+    string SourceInitials,
+    DateTime OccurredAtUtc,
+    string IdempotencyKey);
+
+public sealed record NotificationInboxSendResult(
+    bool Succeeded,
+    bool Retryable,
+    Guid? NotificationId,
+    string? Error);
 
 public sealed record NotificationEmailSendOptions(
     string? IdempotencyKey = null,

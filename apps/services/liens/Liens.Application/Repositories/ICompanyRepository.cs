@@ -80,6 +80,8 @@ public interface ICompanyRepository
         Guid tenantId, Guid companyId, Guid id, CancellationToken ct = default);
     Task<CompanyContactPerson?> GetContactPersonInScopeAsync(
         Guid tenantId, Guid orgId, Guid id, CancellationToken ct = default);
+    Task<bool> ContactPersonEmailExistsAsync(
+        Guid tenantId, string email, Guid? excludingId = null, CancellationToken ct = default);
     Task<List<CompanyContactPerson>> GetContactPersonsByIdsAsync(
         Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default);
     Task AddContactPersonAsync(CompanyContactPerson contact, CancellationToken ct = default);

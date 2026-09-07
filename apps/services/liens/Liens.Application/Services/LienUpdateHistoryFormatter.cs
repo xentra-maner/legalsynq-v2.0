@@ -54,6 +54,18 @@ public static class LienUpdateHistoryFormatter
             $"{normalizedActivity} Changes: {string.Join("; ", changes.Select(FormatChange))}");
     }
 
+    public static string BuildCreationDescription(
+        string activity,
+        IReadOnlyCollection<LienFieldChange> fields)
+    {
+        var normalizedActivity = NormalizeActivity(activity);
+        if (fields.Count == 0)
+            return normalizedActivity;
+
+        return EnsurePeriod(
+            $"{normalizedActivity} Changes: {string.Join("; ", fields.Select(FormatCreatedField))}");
+    }
+
     public static string DisplayFieldName(string propertyName)
     {
         if (string.IsNullOrWhiteSpace(propertyName))
@@ -75,6 +87,14 @@ public static class LienUpdateHistoryFormatter
 
     private static string FormatChange(LienFieldChange change) =>
         $"{change.Field}: {FormatValue(change.PreviousValue)} → {FormatValue(change.NewValue)}";
+
+    private static string FormatCreatedField(LienFieldChange field) =>
+        $"{field.Field}: {FormatCreatedValue(field.NewValue)}";
+
+    private static string FormatCreatedValue(object? value) =>
+        value is null || value is string text && string.IsNullOrWhiteSpace(text)
+            ? "\"\""
+            : FormatValue(value);
 
     private static string FormatValue(object? value)
     {

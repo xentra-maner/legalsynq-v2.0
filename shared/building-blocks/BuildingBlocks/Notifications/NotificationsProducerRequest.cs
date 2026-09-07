@@ -17,7 +17,7 @@ public sealed class NotificationsProducerRequest
 
     /// <summary>
     /// Delivery channel.
-    /// Valid values: <c>email</c>, <c>sms</c>, <c>in-app</c>, <c>push</c>,
+    /// Valid values: <c>email</c>, <c>sms</c>, <c>in_app</c>, <c>push</c>,
     /// <c>event</c>, <c>internal</c>.
     /// </summary>
     [JsonPropertyName("channel")]
@@ -131,6 +131,14 @@ public sealed class NotificationsProducerRequest
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? IdempotencyKey { get; set; }
 
+    /// <summary>
+    /// Immutable presentation snapshot for a personal in-app inbox item.
+    /// Required when <see cref="Channel"/> is <c>in_app</c>.
+    /// </summary>
+    [JsonPropertyName("inboxPresentation")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public InboxPresentation? InboxPresentation { get; set; }
+
     // ── Optional overrides ───────────────────────────────────────────────────
 
     /// <summary>
@@ -164,6 +172,27 @@ public sealed class NotificationsProducerRequest
     [JsonPropertyName("overrideReason")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? OverrideReason { get; set; }
+}
+
+public sealed class InboxPresentation
+{
+    [JsonPropertyName("category")]
+    public string Category { get; set; } = string.Empty;
+
+    [JsonPropertyName("title")]
+    public string Title { get; set; } = string.Empty;
+
+    [JsonPropertyName("description")]
+    public string Description { get; set; } = string.Empty;
+
+    [JsonPropertyName("occurredAtUtc")]
+    public DateTime OccurredAtUtc { get; set; }
+
+    [JsonPropertyName("sourceDisplayName")]
+    public string SourceDisplayName { get; set; } = string.Empty;
+
+    [JsonPropertyName("sourceInitials")]
+    public string SourceInitials { get; set; } = string.Empty;
 }
 
 /// <summary>

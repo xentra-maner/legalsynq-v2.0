@@ -84,6 +84,73 @@ public sealed class NotificationPublisher : INotificationPublisher
         }
     }
 
+    public async Task<NotificationInboxSendResult> SubmitInboxAsync(
+        NotificationInboxSendRequest request,
+        CancellationToken ct = default)
+    {
+        var client = _httpClientFactory.CreateClient("NotificationsService");
+        var payload = new NotificationsProducerRequest
+        {
+            Channel = NotificationTaxonomy.Channels.InApp,
+            ProductKey = NotificationTaxonomy.Liens.ProductKey,
+            EventKey = request.EventKey,
+            SourceSystem = NotificationTaxonomy.Liens.SourceSystem,
+            IdempotencyKey = request.IdempotencyKey,
+            Recipient = new NotificationsRecipient
+            {
+                Mode = "UserId",
+                TenantId = request.TenantId.ToString(),
+                UserId = request.RecipientUserId.ToString(),
+            },
+            Message = new { type = request.EventKey },
+            InboxPresentation = new InboxPresentation
+            {
+                Category = request.Category,
+                Title = request.Title,
+                Description = request.Description,
+                OccurredAtUtc = request.OccurredAtUtc,
+                SourceDisplayName = request.SourceDisplayName,
+                SourceInitials = request.SourceInitials,
+            },
+        };
+
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/v1/notifications");
+        httpRequest.Headers.Add("X-Tenant-Id", request.TenantId.ToString());
+        httpRequest.Content = JsonContent.Create(payload, options: JsonOpts);
+
+        try
+        {
+            using var response = await client.SendAsync(httpRequest, ct);
+            var responseBody = await response.Content.ReadAsStringAsync(ct);
+            NotificationResultDto? result = null;
+            if (!string.IsNullOrWhiteSpace(responseBody))
+            {
+                try { result = JsonSerializer.Deserialize<NotificationResultDto>(responseBody, JsonOpts); }
+                catch (JsonException) { }
+            }
+
+            if (response.IsSuccessStatusCode && result is not null &&
+                string.Equals(result.Status, "sent", StringComparison.OrdinalIgnoreCase))
+            {
+                return new NotificationInboxSendResult(true, false, result.Id, null);
+            }
+
+            var statusCode = (int)response.StatusCode;
+            var retryable = response.IsSuccessStatusCode || statusCode >= 500 || statusCode is 408 or 429;
+            var error = result?.LastErrorMessage ?? result?.FailureCategory ??
+                        $"Notifications service returned HTTP {statusCode}.";
+            return new NotificationInboxSendResult(false, retryable, result?.Id, error);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return new NotificationInboxSendResult(false, true, null, "Notifications request timed out.");
+        }
+        catch (HttpRequestException ex)
+        {
+            return new NotificationInboxSendResult(false, true, null, ex.Message);
+        }
+    }
+
     public async Task<NotificationEmailSendResult> SendEmailAsync(
         string notificationType,
         Guid tenantId,

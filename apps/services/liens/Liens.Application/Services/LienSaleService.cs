@@ -16,6 +16,7 @@ public sealed class LienSaleService : ILienSaleService
     private readonly IBillOfSaleDocumentService _docService;
     private readonly IAuditPublisher _audit;
     private readonly INotificationPublisher _notifications;
+    private readonly ISellingNotificationOutbox _notificationOutbox;
     private readonly ILogger<LienSaleService> _logger;
 
     public LienSaleService(
@@ -26,6 +27,7 @@ public sealed class LienSaleService : ILienSaleService
         IBillOfSaleDocumentService docService,
         IAuditPublisher audit,
         INotificationPublisher notifications,
+        ISellingNotificationOutbox notificationOutbox,
         ILogger<LienSaleService> logger)
     {
         _lienRepo   = lienRepo;
@@ -35,6 +37,7 @@ public sealed class LienSaleService : ILienSaleService
         _docService = docService;
         _audit      = audit;
         _notifications = notifications;
+        _notificationOutbox = notificationOutbox;
         _logger     = logger;
     }
 
@@ -134,6 +137,21 @@ public sealed class LienSaleService : ILienSaleService
             offer.Accept(actingUserId, "Accepted via sale finalization workflow");
             await _offerRepo.UpdateAsync(offer, ct);
 
+            if (offer.SubmittedByPlatformUserId is { } acceptedRecipient)
+            {
+                _notificationOutbox.Enqueue(new NotificationInboxSendRequest(
+                    tenantId,
+                    acceptedRecipient,
+                    BuildingBlocks.Notifications.NotificationTaxonomy.Liens.Events.OfferAccepted,
+                    "lien",
+                    "Offer Accepted",
+                    $"Your offer for lien {lien.LienNumber} was accepted.",
+                    "Synq Selling",
+                    "SS",
+                    offer.RespondedAtUtc ?? DateTime.UtcNow,
+                    $"selling:offer:{offer.Id:N}:accepted:{acceptedRecipient:N}"));
+            }
+
             var billOfSaleNumber = GenerateBillOfSaleNumber(lien.LienNumber);
 
             bos = Domain.Entities.BillOfSale.CreateFromAcceptedOffer(
@@ -161,6 +179,20 @@ public sealed class LienSaleService : ILienSaleService
 
                 competing.Reject(actingUserId, $"Rejected: competing offer superseded by accepted offer '{offer.Id}'");
                 await _offerRepo.UpdateAsync(competing, ct);
+                if (competing.SubmittedByPlatformUserId is { } rejectedRecipient)
+                {
+                    _notificationOutbox.Enqueue(new NotificationInboxSendRequest(
+                        tenantId,
+                        rejectedRecipient,
+                        BuildingBlocks.Notifications.NotificationTaxonomy.Liens.Events.OfferRejected,
+                        "lien",
+                        "Offer Declined",
+                        $"Your offer for lien {lien.LienNumber} was declined.",
+                        "Synq Selling",
+                        "SS",
+                        competing.RespondedAtUtc ?? DateTime.UtcNow,
+                        $"selling:offer:{competing.Id:N}:rejected:{rejectedRecipient:N}"));
+                }
                 rejectedOfferIds.Add((competing.Id, competing.BuyerOrgId));
                 rejectedCount++;
             }

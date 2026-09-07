@@ -2055,6 +2055,7 @@ public static class SellingV2Endpoints
         Guid lienId,
         SubmitSellingBuyerOfferRequest request,
         HttpRequest httpRequest,
+        ISellingNotificationOutbox notificationOutbox,
         LiensDbContext db,
         ICurrentRequestContext context,
         CancellationToken ct)
@@ -2088,8 +2089,22 @@ public static class SellingV2Endpoints
                 return conflict;
             }
 
-            var offer = LienOffer.Create(tenantId, lien.Id, buyerOrgId, lien.SellingOrgId ?? lien.OrgId, request.OfferAmount, userId, request.Message);
+            var offer = LienOffer.Create(
+                tenantId, lien.Id, buyerOrgId, lien.SellingOrgId ?? lien.OrgId,
+                request.OfferAmount, userId, request.Message,
+                submittedByPlatformUserId: userId);
             db.LienOffers.Add(offer);
+            notificationOutbox.Enqueue(new NotificationInboxSendRequest(
+                tenantId,
+                userId,
+                NotificationTaxonomy.Liens.Events.OfferSubmitted,
+                "lien",
+                "Offer Submitted",
+                $"Your offer for lien {lien.LienNumber} was submitted.",
+                "Synq Selling",
+                "SS",
+                offer.OfferedAtUtc,
+                $"selling:offer:{offer.Id:N}:submitted:{userId:N}"));
             if (!lien.HighestBidAmount.HasValue || offer.OfferAmount > lien.HighestBidAmount.Value)
                 lien.UpdateSellingAnalyticsFields(userId, highestBidAmount: offer.OfferAmount);
             await db.SaveChangesAsync(ct);
@@ -2109,6 +2124,7 @@ public static class SellingV2Endpoints
         Guid lienId,
         DeclineSellingBuyerLienRequest request,
         HttpRequest httpRequest,
+        ISellingNotificationOutbox notificationOutbox,
         LiensDbContext db,
         ICurrentRequestContext context,
         CancellationToken ct)
@@ -2173,6 +2189,20 @@ public static class SellingV2Endpoints
         // A buyer decline is recorded as a non-sale response; it does not mutate the core lien lifecycle.
         link.RecordResponse(SellingBuyerResponseStatus.Declined, null, request.Reason);
         AddActivity(db, lien, userId, "Buyer declined lien review.");
+        if (link.CreatedByUserId is { } sellerUserId && sellerUserId != Guid.Empty)
+        {
+            notificationOutbox.Enqueue(new NotificationInboxSendRequest(
+                tenantId,
+                sellerUserId,
+                NotificationTaxonomy.Liens.Events.OfferRejected,
+                "lien",
+                "Offer Declined",
+                $"A buyer declined the offer for lien {lien.LienNumber}.",
+                "Synq Selling",
+                "SS",
+                link.RespondedAtUtc ?? DateTime.UtcNow,
+                $"selling:access-link:{link.Id:N}:rejected:{sellerUserId:N}"));
+        }
         await db.SaveChangesAsync(ct);
         var completed = await SellingIdempotency.CompleteAsync(db, started.Record!, userId, StatusCodes.Status200OK,
             new { lienId, response = SellingBuyerResponseStatus.Declined }, ct);

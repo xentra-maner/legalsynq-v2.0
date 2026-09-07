@@ -246,7 +246,7 @@ public static class NotificationTaxonomy
     {
         public const string Email    = "email";
         public const string Sms      = "sms";
-        public const string InApp    = "in-app";
+        public const string InApp    = "in_app";
         public const string Push     = "push";
         public const string Event    = "event";
         public const string Internal = "internal";

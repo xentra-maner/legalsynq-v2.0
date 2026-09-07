@@ -32,6 +32,7 @@ public static class DependencyInjection
                 mysql => mysql.EnableRetryOnFailure(3)));
 
         services.AddScoped<INotificationRepository, NotificationRepository>();
+        services.AddScoped<IUserInboxService, UserInboxService>();
         services.AddScoped<INotificationAttemptRepository, NotificationAttemptRepository>();
         services.AddScoped<ITemplateRepository, TemplateRepository>();
         services.AddScoped<ITemplateVersionRepository, TemplateVersionRepository>();

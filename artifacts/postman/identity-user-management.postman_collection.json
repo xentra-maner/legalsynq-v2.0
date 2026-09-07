@@ -1,0 +1,660 @@
+{
+  "info": {
+    "_postman_id": "a7c1f2d9-4b83-4e6a-9d2c-1e5f7a9b0c34",
+    "name": "LegalSynq Identity - Tenant User Management",
+    "description": "Tenant-portal User Management endpoints on the Identity service, reached through the YARP gateway (`/identity` prefix, gateway on :5010).\n\nCovers the list / create-with-password / edit-profile / reset-password / deactivate / activate flow plus the role and organization lookups used to populate the Add/Edit form dropdowns.\n\nSetup:\n1. Import the paired environment `identity-user-management.postman_environment.json`.\n2. Set `adminEmail`, `adminPassword`, and `tenantCode` for a TenantAdmin (or PlatformAdmin) account.\n3. Run `Login` first - it stores `bearerToken` and `tenantId`.\n4. Run `List Roles` and `List Organizations` to populate `roleId` / `organizationId` (optional - both are optional on create).\n5. Run `Create User (admin-set password)` - it stores the new `userId`; the remaining Users requests act on it.\n\nAll `/api/admin/*` routes require a JWT carrying `TenantAdmin`/`PlatformAdmin` or the `TENANT.users:view` / `TENANT.users:manage` permission. Non-PlatformAdmin callers are always scoped to their own tenant. No Idempotency-Key header is required by these Identity routes.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{bearerToken}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "00 - Authentication",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login succeeded', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.expect(json.accessToken, 'accessToken').to.be.a('string').and.not.empty;",
+                  "pm.environment.set('bearerToken', json.accessToken);",
+                  "if (json.user && json.user.tenantId) { pm.environment.set('tenantId', json.user.tenantId); }",
+                  "if ((pm.environment.get('autoGenerateEmail') || 'true').toLowerCase() === 'true') {",
+                  "  const stamp = Date.now();",
+                  "  pm.environment.set('targetEmail', `postman.user.${stamp}@example.test`);",
+                  "  pm.environment.set('updatedEmail', `postman.user.${stamp}.edited@example.test`);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\",\n  \"tenantCode\": \"{{tenantCode}}\"\n}"
+            },
+            "url": {
+              "raw": "{{identityBaseUrl}}/api/auth/login",
+              "host": ["{{identityBaseUrl}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "description": "Authenticate a TenantAdmin/PlatformAdmin. Stores `bearerToken` and `tenantId`. `tenantCode` may be left blank for a common portal that resolves tenant by email."
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 - Lookups (form dropdowns)",
+      "item": [
+        {
+          "name": "List Roles",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const items = (pm.response.json().items) || [];",
+                  "if (items.length) { pm.environment.set('roleId', items[0].id); }",
+                  "pm.test('roles have id + name', () => pm.expect(items[0]).to.include.keys(['id', 'name']));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{identityBaseUrl}}/api/admin/roles?page=1&pageSize=50",
+              "host": ["{{identityBaseUrl}}"],
+              "path": ["api", "admin", "roles"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "50" },
+                { "key": "scope", "value": "Tenant", "disabled": true }
+              ]
+            },
+            "description": "Role catalog used to populate the 'Role' dropdown. Stores the first row into `roleId`."
+          }
+        },
+        {
+          "name": "List Organizations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const items = (pm.response.json().items) || [];",
+                  "if (items.length) { pm.environment.set('organizationId', items[0].id); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{identityBaseUrl}}/api/admin/organizations?tenantId={{tenantId}}",
+              "host": ["{{identityBaseUrl}}"],
+              "path": ["api", "admin", "organizations"],
+              "query": [{ "key": "tenantId", "value": "{{tenantId}}" }]
+            },
+            "description": "Active organizations for the caller's tenant - the 'Company' dropdown source. Stores the first row into `organizationId`. (TenantAdmin callers are forced to their own tenant regardless of the query value.)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - Users",
+      "item": [
+        {
+          "name": "List Users",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('paged envelope', () => pm.expect(json).to.include.keys(['items', 'totalCount', 'page', 'pageSize']));",
+                  "if (json.items && json.items.length) {",
+                  "  pm.test('item exposes Company + Date Added + Last Date Edited', () => {",
+                  "    pm.expect(json.items[0]).to.include.keys(['primaryOrg', 'createdAtUtc', 'updatedAtUtc']);",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{identityBaseUrl}}/api/admin/users?page={{page}}&pageSize={{pageSize}}&search={{search}}",
+              "host": ["{{identityBaseUrl}}"],
+              "path": ["api", "admin", "users"],
+              "query": [
+                { "key": "page", "value": "{{page}}" },
+                { "key": "pageSize", "value": "{{pageSize}}" },
+                { "key": "search", "value": "{{search}}", "description": "Matches email / first name / last name (Contains)." },
+                { "key": "status", "value": "active", "description": "active | inactive | invited", "disabled": true },
+                { "key": "isActive", "value": "true", "description": "true | false", "disabled": true }
+              ]
+            },
+            "description": "Tenant-scoped, paginated user list backing the User Management table. Each item includes `role`, `primaryOrg` (Company), `status`, `createdAtUtc` (Date Added), and `updatedAtUtc` (Last Date Edited). Requires `TENANT.users:view`."
+          }
+        },
+        {
+          "name": "Create User (admin-set password)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.expect(json.userId, 'userId').to.be.a('string').and.not.empty;",
+                  "pm.environment.set('userId', json.userId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tenantId\": \"{{tenantId}}\",\n  \"email\": \"{{targetEmail}}\",\n  \"firstName\": \"{{targetFirstName}}\",\n  \"lastName\": \"{{targetLastName}}\",\n  \"password\": \"{{targetPassword}}\",\n  \"roleId\": \"{{roleId}}\",\n  \"organizationId\": \"{{organizationId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{identityBaseUrl}}/api/admin/users",
+              "host": ["{{identityBaseUrl}}"],
+              "path": ["api", "admin", "users"]
+            },
+            "description": "Creates an ACTIVE user with an admin-set password (min 8 chars), links the tenant, and - when provided - assigns `roleId` (global) and a primary membership in `organizationId`. Stores `userId`.\n\n`roleId` / `organizationId` are optional: clear those environment vars (or delete the lines) to create a user without them.\n\nErrors: 400 validation / bad org / bad role, 403 cross-tenant, 404 tenant not found, 409 email already exists on the platform. Requires `TENANT.users:manage`."
+          }
+        },
+        {
+          "name": "Get User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.expect(pm.response.json().id).to.eql(pm.environment.get('userId'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{identityBaseUrl}}/api/admin/users/{{userId}}",
+              "host": ["{{identityBaseUrl}}"],
+              "path": ["api", "admin", "users", "{{userId}}"]
+            },
+            "description": "Full detail for one user (roles, memberships, timestamps, lock/session state). Requires `TENANT.users:view`."
+          }
+        },
+        {
+          "name": "Update User Profile (name + title)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('name applied', () => {",
+                  "  pm.expect(json.firstName).to.eql(pm.environment.get('updatedFirstName'));",
+                  "  pm.expect(json.lastName).to.eql(pm.environment.get('updatedLastName'));",
+                  "});",
+                  "pm.test('updatedAtUtc returned', () => pm.expect(json.updatedAtUtc).to.be.a('string').and.not.empty);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"{{updatedFirstName}}\",\n  \"lastName\": \"{{updatedLastName}}\",\n  \"title\": \"{{updatedTitle}}\"\n}"
+            },
+            "url": {
+              "raw": "{{identityBaseUrl}}/api/admin/users/{{userId}}",
+              "host": ["{{identityBaseUrl}}"],
+              "path": ["api", "admin", "users", "{{userId}}"]
+            },
+            "description": "Edit User (Edit User form). Any field left out is unchanged; `firstName` and `lastName` must be supplied together (sending only one -> 400). Returns `{ id, firstName, lastName, email, title, updatedAtUtc }`.\n\nEmits `identity.user.profile_updated` only when a value actually changes (a no-op body still returns 200). Errors: 400 validation, 403 cross-tenant, 404 not found. Requires `TENANT.users:manage`."
+          }
+        },
+        {
+          "name": "Update User Email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.expect(pm.response.json().email).to.eql((pm.environment.get('updatedEmail') || '').toLowerCase());"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{updatedEmail}}\"\n}"
+            },
+            "url": {
+              "raw": "{{identityBaseUrl}}/api/admin/users/{{userId}}",
+              "host": ["{{identityBaseUrl}}"],
+              "path": ["api", "admin", "users", "{{userId}}"]
+            },
+            "description": "Same PATCH endpoint, email only. The address is lowercased/trimmed and must be unique - a collision returns 409 `{ error: \"A user with this email already exists.\" }`. Changing the email bumps the user's session version, invalidating their existing JWTs."
+          }
+        },
+        {
+          "name": "Reset Password (email link)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.expect(pm.response.json().message, 'message').to.be.a('string');",
+                  "// Non-production without a configured mailer returns { message, resetToken } - never surfaced in the UI.",
+                  "const t = pm.response.json().resetToken;",
+                  "if (t) { pm.environment.set('resetToken', t); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "" },
+            "url": {
+              "raw": "{{identityBaseUrl}}/api/admin/users/{{userId}}/reset-password",
+              "host": ["{{identityBaseUrl}}"],
+              "path": ["api", "admin", "users", "{{userId}}", "reset-password"]
+            },
+            "description": "Reset Password action. No body. Revokes pending reset tokens, issues a fresh 24h token, and emails a tenant-subdomain-aware `/reset-password?token=` link. 200 on send; 502 delivery failure; 503 in production when the notifications service is not configured; non-production fallback returns 200 with a raw `resetToken`. Requires `TENANT.users:manage`."
+          }
+        },
+        {
+          "name": "Deactivate User (\"Delete User\")",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{identityBaseUrl}}/api/admin/users/{{userId}}/deactivate",
+              "host": ["{{identityBaseUrl}}"],
+              "path": ["api", "admin", "users", "{{userId}}", "deactivate"]
+            },
+            "description": "The 'Delete User' action maps to a reversible soft deactivate (`IsActive = false`, device sessions revoked). Idempotent: already-inactive returns 204 without re-emitting. 422 `LAST_ACTIVE_ADMIN` if this is the tenant's only active TenantAdmin. 403 cross-tenant, 404 not found. Requires `TENANT.users:manage`."
+          }
+        },
+        {
+          "name": "Activate User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{identityBaseUrl}}/api/admin/users/{{userId}}/activate",
+              "host": ["{{identityBaseUrl}}"],
+              "path": ["api", "admin", "users", "{{userId}}", "activate"]
+            },
+            "description": "Re-activates a soft-deactivated user. Idempotent. Requires `TENANT.users:manage`."
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Roles",
+      "item": [
+        {
+          "name": "List Roles",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('paged envelope', () => pm.expect(json).to.include.keys(['items', 'totalCount']));",
+                  "if (json.items && json.items.length) {",
+                  "  pm.test('item exposes Access + Date Added + Last Date Edited', () => pm.expect(json.items[0]).to.include.keys(['permissions', 'createdAtUtc', 'updatedAtUtc']));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{identityBaseUrl}}/api/admin/roles?page=1&pageSize=25",
+              "host": ["{{identityBaseUrl}}"],
+              "path": ["api", "admin", "roles"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "25" }
+              ]
+            },
+            "description": "Roles tab table. For a TenantAdmin this is tenant-scoped (own custom roles only); a fresh tenant returns zero. Each item carries `permissions` (codes → the 'Access' badges), `permissionCount`, `userCount`, `createdAtUtc`, `updatedAtUtc`. Requires `TENANT.roles:view`."
+          }
+        },
+        {
+          "name": "List Permission Catalog",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{identityBaseUrl}}/api/admin/permissions/catalog",
+              "host": ["{{identityBaseUrl}}"],
+              "path": ["api", "admin", "permissions", "catalog"]
+            },
+            "description": "Grouped permission catalog (by product, each permission carries a `Category`) — the source for the Add/Edit Role wizard's Step 2 checkboxes. No new endpoint was built for this."
+          }
+        },
+        {
+          "name": "Create Role",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.expect(json.id, 'id').to.be.a('string').and.not.empty;",
+                  "pm.environment.set('customRoleId', json.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{roleName}}\",\n  \"description\": \"{{roleDescription}}\",\n  \"permissionCodes\": {{rolePermissionCodes}}\n}"
+            },
+            "url": {
+              "raw": "{{identityBaseUrl}}/api/admin/roles",
+              "host": ["{{identityBaseUrl}}"],
+              "path": ["api", "admin", "roles"]
+            },
+            "description": "Add Role wizard result. `permissionCodes` is a JSON array of permission codes from the catalog. Stores `customRoleId`. 409 `ROLE_NAME_CONFLICT` on duplicate name; 400 `INVALID_PERMISSION` on an unknown code; 403 `PERMISSION_NOT_DELEGABLE` if a non-admin grants a permission they lack. Requires `TENANT.roles:manage`."
+          }
+        },
+        {
+          "name": "Get Role",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('resolvedPermissions present', () => pm.expect(pm.response.json()).to.have.property('resolvedPermissions'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{identityBaseUrl}}/api/admin/roles/{{customRoleId}}",
+              "host": ["{{identityBaseUrl}}"],
+              "path": ["api", "admin", "roles", "{{customRoleId}}"]
+            },
+            "description": "Full role detail incl. `permissions` (codes) and `resolvedPermissions` (id/name/description/product) — seeds the Edit Role wizard. Requires `TENANT.roles:view`."
+          }
+        },
+        {
+          "name": "Update Role",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('name applied', () => pm.expect(pm.response.json().name).to.eql(pm.environment.get('roleUpdatedName')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{roleUpdatedName}}\",\n  \"description\": \"{{roleDescription}}\",\n  \"permissionCodes\": {{roleUpdatedPermissionCodes}}\n}"
+            },
+            "url": {
+              "raw": "{{identityBaseUrl}}/api/admin/roles/{{customRoleId}}",
+              "host": ["{{identityBaseUrl}}"],
+              "path": ["api", "admin", "roles", "{{customRoleId}}"]
+            },
+            "description": "Edit Role wizard result: renames and **replaces** the permission set (send the full desired list). Current holders get a bumped access version. 409 `SYSTEM_ROLE` for system roles. Requires `TENANT.roles:manage`."
+          }
+        },
+        {
+          "name": "Get Role Permissions",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const items = (pm.response.json().items) || [];",
+                  "if (items.length) { pm.environment.set('permissionId', items[0].id); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{identityBaseUrl}}/api/admin/roles/{{customRoleId}}/permissions",
+              "host": ["{{identityBaseUrl}}"],
+              "path": ["api", "admin", "roles", "{{customRoleId}}", "permissions"]
+            },
+            "description": "The role's assigned permissions as `{ id (permissionId), code, name, description, productName, assignedAtUtc }`. Stores the first row into `permissionId`. Requires `TENANT.roles:view`."
+          }
+        },
+        {
+          "name": "Add Single Permission to Role",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('status 200/201/204', () => pm.expect([200,201,204]).to.include(pm.response.code));"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"permissionId\": \"{{permissionId}}\"\n}" },
+            "url": {
+              "raw": "{{identityBaseUrl}}/api/admin/roles/{{customRoleId}}/permissions",
+              "host": ["{{identityBaseUrl}}"],
+              "path": ["api", "admin", "roles", "{{customRoleId}}", "permissions"]
+            },
+            "description": "Idempotent single-permission grant (used by Control Center; the tenant-portal wizard uses the bulk `PUT /api/admin/roles/{id}` instead). Emits `role.permission.assigned`. System roles require PlatformAdmin."
+          }
+        },
+        {
+          "name": "Revoke Single Permission from Role",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('status 204', () => pm.response.to.have.status(204));"]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{identityBaseUrl}}/api/admin/roles/{{customRoleId}}/permissions/{{permissionId}}",
+              "host": ["{{identityBaseUrl}}"],
+              "path": ["api", "admin", "roles", "{{customRoleId}}", "permissions", "{{permissionId}}"]
+            },
+            "description": "Removes one permission from the role. Emits `role.permission.revoked`."
+          }
+        },
+        {
+          "name": "Get Assignable Roles (for a user)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{identityBaseUrl}}/api/admin/users/{{userId}}/assignable-roles",
+              "host": ["{{identityBaseUrl}}"],
+              "path": ["api", "admin", "users", "{{userId}}", "assignable-roles"]
+            },
+            "description": "Roles a TenantAdmin may assign to this user, with eligibility metadata. Populates the role picker on the Users tab / invite flow."
+          }
+        },
+        {
+          "name": "Assign Role to User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('status 200/201', () => pm.expect([200,201]).to.include(pm.response.code));"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"roleId\": \"{{customRoleId}}\"\n}" },
+            "url": {
+              "raw": "{{identityBaseUrl}}/api/admin/users/{{userId}}/roles",
+              "host": ["{{identityBaseUrl}}"],
+              "path": ["api", "admin", "users", "{{userId}}", "roles"]
+            },
+            "description": "Assigns a global-scope role to the user. TenantAdmin may only assign tenant-scoped roles. 400 `ROLE_NOT_TENANT_ASSIGNABLE`, 404 user/role. Requires `TENANT.roles:assign`. (After this, the role's `DELETE` returns 409 `ROLE_IN_USE`.)"
+          }
+        },
+        {
+          "name": "Revoke Role from User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('status 204', () => pm.response.to.have.status(204));"]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{identityBaseUrl}}/api/admin/users/{{userId}}/roles/{{customRoleId}}",
+              "host": ["{{identityBaseUrl}}"],
+              "path": ["api", "admin", "users", "{{userId}}", "roles", "{{customRoleId}}"]
+            },
+            "description": "Removes the role assignment from the user. Requires `TENANT.roles:assign`. Run before `Delete Role` to clear the `ROLE_IN_USE` guard."
+          }
+        },
+        {
+          "name": "Get User Effective Permissions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{identityBaseUrl}}/api/admin/users/{{userId}}/permissions",
+              "host": ["{{identityBaseUrl}}"],
+              "path": ["api", "admin", "users", "{{userId}}", "permissions"]
+            },
+            "description": "The union of permissions the user holds across all active role assignments, each annotated with which role(s) grant it. Read-only."
+          }
+        },
+        {
+          "name": "Delete Role",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('status 204', () => pm.response.to.have.status(204));"]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{identityBaseUrl}}/api/admin/roles/{{customRoleId}}",
+              "host": ["{{identityBaseUrl}}"],
+              "path": ["api", "admin", "roles", "{{customRoleId}}"]
+            },
+            "description": "Delete Role confirm modal. Hard delete of a custom role + its permission assignments. 409 `SYSTEM_ROLE`; 409 `ROLE_IN_USE` when the role is assigned to any active user (unassign via `Revoke Role from User` first). Requires `TENANT.roles:manage`."
+          }
+        }
+      ]
+    }
+  ]
+}

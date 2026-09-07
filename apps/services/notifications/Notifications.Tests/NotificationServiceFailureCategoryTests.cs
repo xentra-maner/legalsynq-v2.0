@@ -27,9 +27,12 @@ public class NotificationServiceFailureCategoryTests
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private static NotificationServiceImpl BuildService(IEmailProviderAdapter emailAdapter)
+    private static NotificationServiceImpl BuildService(
+        IEmailProviderAdapter emailAdapter,
+        IUserInboxService? inbox = null,
+        StubNotificationRepository? notificationRepository = null)
     {
-        var notifRepo    = new StubNotificationRepository();
+        var notifRepo    = notificationRepository ?? new StubNotificationRepository();
         var attemptRepo  = new StubNotificationAttemptRepository();
         var eventRepo    = new StubNotificationEventRepository();
         var issueRepo    = new StubDeliveryIssueRepository();
@@ -57,7 +60,7 @@ public class NotificationServiceFailureCategoryTests
             routing, contact, usage, metering,
             templateRes, templateRend, branding,
             emailAdapter, smsAdapter,
-            smsRuntime, recipient, audit,
+            smsRuntime, recipient, inbox ?? new StubUserInboxService(), audit,
             costOptions, smsRouting, routingDecisions,
             retrySuppression, governance, templateGov,
             new StubGovernanceExecutionRuntime(),
@@ -69,6 +72,115 @@ public class NotificationServiceFailureCategoryTests
         Channel   = "email",
         Recipient = new { email = toEmail },
         Message   = new { subject = "Test subject", body = "Hello" },
+    };
+
+    [Theory]
+    [InlineData("in_app")]
+    [InlineData("in-app")]
+    [InlineData("inapp")]
+    public async Task SubmitAsync_NormalizesInAppAliases(string channel)
+    {
+        var inbox = new StubUserInboxService();
+        var service = BuildService(new StubEmailProviderAdapter(new EmailSendResult { Success = true }), inbox);
+        var userId = Guid.NewGuid();
+
+        var result = await service.SubmitAsync(TenantId, new SubmitNotificationDto
+        {
+            Channel = channel,
+            ProductKey = "liens",
+            EventKey = "lien.offer.submitted",
+            IdempotencyKey = Guid.NewGuid().ToString("N"),
+            Recipient = new { mode = "UserId", userId },
+            Message = new { type = "lien.offer.submitted" },
+            InboxPresentation = new InboxPresentationDto
+            {
+                Category = "lien",
+                Title = "Offer Submitted",
+                Description = "Your offer was submitted.",
+                SourceDisplayName = "Synq Selling",
+                SourceInitials = "SS",
+                OccurredAtUtc = DateTime.UtcNow,
+            },
+        });
+
+        Assert.Equal("sent", result.Status);
+        Assert.Equal("in_app", inbox.Notification!.Channel);
+    }
+
+    [Fact]
+    public async Task SubmitAsync_ReplaysExistingInAppNotificationWithoutCreatingAnotherInboxItem()
+    {
+        var key = Guid.NewGuid().ToString("N");
+        var winner = ExistingInAppNotification(key);
+        var repository = new StubNotificationRepository { Existing = winner };
+        var inbox = new StubUserInboxService();
+        var service = BuildService(
+            new StubEmailProviderAdapter(new EmailSendResult { Success = true }),
+            inbox,
+            repository);
+
+        var result = await service.SubmitAsync(TenantId, InAppRequest(key));
+
+        Assert.Equal(winner.Id, result.Id);
+        Assert.Equal("sent", result.Status);
+        Assert.Equal(0, inbox.CreateCalls);
+    }
+
+    [Fact]
+    public async Task SubmitAsync_LoadsDatabaseWinnerAfterConcurrentInAppInsertRace()
+    {
+        var key = Guid.NewGuid().ToString("N");
+        var winner = ExistingInAppNotification(key);
+        var repository = new StubNotificationRepository
+        {
+            Existing = winner,
+            MissesBeforeExisting = 1,
+        };
+        var inbox = new StubUserInboxService
+        {
+            CreateException = new Microsoft.EntityFrameworkCore.DbUpdateException("duplicate idempotency key"),
+        };
+        var service = BuildService(
+            new StubEmailProviderAdapter(new EmailSendResult { Success = true }),
+            inbox,
+            repository);
+
+        var result = await service.SubmitAsync(TenantId, InAppRequest(key));
+
+        Assert.Equal(winner.Id, result.Id);
+        Assert.Equal("sent", result.Status);
+        Assert.Equal(1, inbox.CreateCalls);
+        Assert.Equal(2, repository.FindCalls);
+    }
+
+    private static SubmitNotificationDto InAppRequest(string idempotencyKey) => new()
+    {
+        Channel = "in_app",
+        ProductKey = "liens",
+        EventKey = "lien.offer.submitted",
+        IdempotencyKey = idempotencyKey,
+        Recipient = new { mode = "UserId", userId = Guid.NewGuid() },
+        Message = new { type = "lien.offer.submitted" },
+        InboxPresentation = new InboxPresentationDto
+        {
+            Category = "lien",
+            Title = "Offer Submitted",
+            Description = "Your offer was submitted.",
+            SourceDisplayName = "Synq Selling",
+            SourceInitials = "SS",
+            OccurredAtUtc = DateTime.UtcNow,
+        },
+    };
+
+    private static Notification ExistingInAppNotification(string idempotencyKey) => new()
+    {
+        Id = Guid.CreateVersion7(),
+        TenantId = TenantId,
+        Channel = "in_app",
+        Status = "sent",
+        RecipientJson = "{}",
+        MessageJson = "{}",
+        IdempotencyKey = idempotencyKey,
     };
 
     // ── Tests ─────────────────────────────────────────────────────────────────
@@ -190,6 +302,7 @@ public class NotificationServiceFailureCategoryTests
             new StubSmsProviderAdapter(),
             new StubSmsProviderRuntimeResolver(),
             new StubRecipientResolver(),
+            new StubUserInboxService(),
             new StubAuditEventClient(),
             Options.Create(new SmsCostAnalyticsOptions()),
             new StubSmsRoutingEngine(),
@@ -233,6 +346,12 @@ public class NotificationServiceFailureCategoryTests
 
     private sealed class StubNotificationRepository : INotificationRepository
     {
+        private int _findCalls;
+
+        public Notification? Existing { get; init; }
+        public int MissesBeforeExisting { get; init; }
+        public int FindCalls => _findCalls;
+
         public Task<Notification?> GetByIdAsync(Guid id)
             => Task.FromResult<Notification?>(null);
 
@@ -240,7 +359,10 @@ public class NotificationServiceFailureCategoryTests
             => Task.FromResult<Notification?>(null);
 
         public Task<Notification?> FindByIdempotencyKeyAsync(Guid tenantId, string idempotencyKey)
-            => Task.FromResult<Notification?>(null);
+        {
+            var call = Interlocked.Increment(ref _findCalls);
+            return Task.FromResult(call <= MissesBeforeExisting ? null : Existing);
+        }
 
         public Task<List<Notification>> GetByTenantAsync(Guid tenantId, int limit = 50, int offset = 0)
             => Task.FromResult(new List<Notification>());
@@ -545,5 +667,24 @@ public class NotificationServiceFailureCategoryTests
             CancellationToken ct = default)
             => Task.FromResult<IReadOnlyList<GovernanceChannelRuntimeStatus>>(
                 Array.Empty<GovernanceChannelRuntimeStatus>());
+    }
+
+    private sealed class StubUserInboxService : IUserInboxService
+    {
+        public Notification? Notification { get; private set; }
+        public Exception? CreateException { get; init; }
+        public int CreateCalls { get; private set; }
+        public Task CreateWithNotificationAsync(Notification notification, Guid recipientUserId, string productKey, string eventKey, InboxPresentationDto presentation, CancellationToken ct = default)
+        {
+            CreateCalls++;
+            if (CreateException is not null) throw CreateException;
+            Notification = notification;
+            return Task.CompletedTask;
+        }
+        public Task<UserInboxPageDto> ListAsync(Guid tenantId, Guid userId, string? category, string? readState, int page, int pageSize, DateTime? asOfUtc, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<UserInboxSummaryDto> GetSummaryAsync(Guid tenantId, Guid userId, int limit, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<UserInboxReadResultDto?> MarkReadAsync(Guid tenantId, Guid userId, Guid itemId, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<MarkAllInboxReadResultDto> MarkAllReadAsync(Guid tenantId, Guid userId, DateTime throughUtc, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<bool> DismissAsync(Guid tenantId, Guid userId, Guid itemId, CancellationToken ct = default) => throw new NotSupportedException();
     }
 }

@@ -12,6 +12,9 @@ public static class Policies
     // callers that supply a valid X-Tenant-Id header (backward-compat transition).
     public const string ServiceSubmission = "ServiceSubmission";
 
+    // User JWT only: valid GUID sub + tenant_id, with no service identity claim.
+    public const string NotificationInboxUser = "NotificationInboxUser";
+
     // Capability-based policies (coarse product role gates — use for route groups).
     //
     // REGISTRATION STATUS (BLK-GOV-01 audit, 2026-04-23):

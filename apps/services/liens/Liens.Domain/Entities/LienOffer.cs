@@ -19,6 +19,7 @@ public class LienOffer : AuditableEntity
     public string? Notes             { get; private set; }
     public string? ResponseNotes     { get; private set; }
     public string? ExternalReference { get; private set; }
+    public Guid? SubmittedByPlatformUserId { get; private set; }
 
     public DateTime OfferedAtUtc      { get; private set; }
     public DateTime? ExpiresAtUtc     { get; private set; }
@@ -55,7 +56,8 @@ public class LienOffer : AuditableEntity
         Guid createdByUserId,
         string? notes = null,
         string? externalReference = null,
-        DateTime? expiresAtUtc = null)
+        DateTime? expiresAtUtc = null,
+        Guid? submittedByPlatformUserId = null)
     {
         if (tenantId == Guid.Empty) throw new ArgumentException("TenantId is required.", nameof(tenantId));
         if (lienId == Guid.Empty) throw new ArgumentException("LienId is required.", nameof(lienId));
@@ -81,6 +83,7 @@ public class LienOffer : AuditableEntity
             Status            = OfferStatus.Pending,
             Notes             = notes?.Trim(),
             ExternalReference = externalReference?.Trim(),
+            SubmittedByPlatformUserId = submittedByPlatformUserId,
             OfferedAtUtc      = now,
             ExpiresAtUtc      = expiresAtUtc,
             CreatedByUserId   = createdByUserId,

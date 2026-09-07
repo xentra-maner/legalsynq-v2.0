@@ -40,4 +40,22 @@ public sealed class LienUpdateHistoryFormatterTests
         foreach (var change in changes)
             description.Should().Contain($"{change.Field}:");
     }
+
+    [Fact]
+    public void BuildCreationDescription_uses_current_values_without_blank_transitions()
+    {
+        var fields = new[]
+        {
+            new LienFieldChange("Lien Code", null, "26-10008-1"),
+            new LienFieldChange("Status", null, string.Empty),
+            new LienFieldChange("Purchase Date", null, new DateOnly(2026, 6, 22)),
+        };
+
+        var description = LienUpdateHistoryFormatter.BuildCreationDescription("Lien Created", fields);
+
+        description.Should().Be(
+            "Lien Created. Changes: Lien Code: 26-10008-1; Status: \"\"; Purchase Date: 06/22/2026.");
+        description.Should().NotContain("blank");
+        description.Should().NotContain("→");
+    }
 }

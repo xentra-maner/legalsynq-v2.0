@@ -338,8 +338,8 @@ public sealed class RootEntityHistoryCaptureTests
         var history = await db.LienStatusHistories.SingleAsync(item => item.LienId == lien.Id);
         history.Description.Should().Be(
             "Lien Created. Lien Status: Pending. Selling lien created. Changes: " +
-            "Lien Code: blank → 26-10008-1; Status: blank → Open; " +
-            "Purchase Date: blank → 06/22/2026; Initial Service Date: blank → 07/27/2026.");
+            "Lien Code: 26-10008-1; Status: \"\"; " +
+            "Purchase Date: 06/22/2026; Initial Service Date: 07/27/2026.");
     }
 
     [Fact]

@@ -193,6 +193,8 @@ public static class DependencyInjection
         })
         .AddHttpMessageHandler<NotificationsAuthDelegatingHandler>();
         services.AddScoped<INotificationPublisher, NotificationPublisher>();
+        services.AddScoped<ISellingNotificationOutbox, SellingNotificationOutbox>();
+        services.AddHostedService<SellingNotificationOutboxWorker>();
 
         // TASK-B04 — Task service HTTP client with shared service-token auth handler.
         services.AddTransient<TaskServiceAuthDelegatingHandler>();

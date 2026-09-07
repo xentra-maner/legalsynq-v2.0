@@ -104,6 +104,11 @@ public sealed class CasePaymentEndpointTests : IClassFixture<LiensApiFactory>, I
     {
         var response = await PostPaymentAsync(CreateRequest(501m), "case-payment-overpayment");
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest, await response.Content.ReadAsStringAsync());
+        var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        body!.RootElement.GetProperty("error").GetProperty("message").GetString()
+            .Should().Be("Payment amount cannot exceed the available balance of $500.00.");
+        body!.RootElement.GetProperty("error").GetProperty("fields").GetProperty("amount")[0].GetString()
+            .Should().Be("Payment amount cannot exceed the available balance of $500.00.");
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();

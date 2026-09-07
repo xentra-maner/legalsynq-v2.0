@@ -274,6 +274,89 @@ namespace Notifications.Infrastructure.Data.Migrations
                     b.ToTable("ntf_Notifications", (string)null);
                 });
 
+            modelBuilder.Entity("Notifications.Domain.UserInboxItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<DateTime?>("DismissedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("EventKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<Guid>("NotificationId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("ProductKey")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<DateTime?>("ReadAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("RecipientUserId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("SourceDisplayName")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("varchar(160)");
+
+                    b.Property<string>("SourceInitials")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("varchar(8)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("varchar(160)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NotificationId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_UserInboxItems_NotificationId");
+
+                    b.HasIndex("TenantId", "RecipientUserId", "Category", "DismissedAtUtc", "OccurredAtUtc")
+                        .HasDatabaseName("IX_UserInboxItems_User_Category");
+
+                    b.HasIndex("TenantId", "RecipientUserId", "DismissedAtUtc", "OccurredAtUtc", "Id")
+                        .HasDatabaseName("IX_UserInboxItems_User_Chronology");
+
+                    b.HasIndex("TenantId", "RecipientUserId", "ReadAtUtc", "DismissedAtUtc")
+                        .HasDatabaseName("IX_UserInboxItems_User_ReadState");
+
+                    b.ToTable("ntf_UserInboxItems", (string)null);
+                });
+
             modelBuilder.Entity("Notifications.Domain.NotificationAttempt", b =>
                 {
                     b.Property<Guid>("Id")

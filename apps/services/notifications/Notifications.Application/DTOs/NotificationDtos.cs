@@ -45,6 +45,7 @@ public class SubmitNotificationDto
     public string? IdempotencyKey { get; set; }
     public string? TemplateKey { get; set; }
     public Dictionary<string, string>? TemplateData { get; set; }
+    public InboxPresentationDto? InboxPresentation { get; set; }
 
     /// <summary>
     /// Email subject line. When set, takes precedence over a <c>subject</c> field
@@ -69,6 +70,16 @@ public class SubmitNotificationDto
     public string? OverrideReason { get; set; }
     public string? Severity { get; set; }
     public string? Category { get; set; }
+}
+
+public sealed class InboxPresentationDto
+{
+    public string Category { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public DateTime OccurredAtUtc { get; set; }
+    public string SourceDisplayName { get; set; } = string.Empty;
+    public string SourceInitials { get; set; } = string.Empty;
 }
 
 public class NotificationResultDto

@@ -10,9 +10,6 @@ namespace Liens.Infrastructure.Services;
 
 public sealed class SellingOperationsDashboardService : ISellingOperationsDashboardService
 {
-    private const string PastAmountDueUnavailableReason =
-        "Past Amount Due is not calculated by the selling operations dashboard.";
-
     private readonly LiensDbContext _db;
     private readonly TimeProvider _timeProvider;
 
@@ -44,20 +41,17 @@ public sealed class SellingOperationsDashboardService : ISellingOperationsDashbo
             : null;
 
         var scopedLiens = ScopedLiens(tenantId, sellerOrgId);
-        var currentFinancials = await GetFinancialsAsync(scopedLiens, period, ct);
-        var comparisonFinancials = comparisonPeriod.HasValue
-            ? await GetFinancialsAsync(scopedLiens, comparisonPeriod.Value, ct)
-            : null;
-        var currentPayments = await GetPaymentsAsync(scopedLiens, tenantId, period, ct);
-        var comparisonPayments = comparisonPeriod.HasValue
-            ? await GetPaymentsAsync(scopedLiens, tenantId, comparisonPeriod.Value, ct)
-            : (decimal?)null;
+        var financials = await GetFinancialsAsync(scopedLiens, ct);
+        var payments = await GetPaymentsAsync(scopedLiens, tenantId, ct);
 
         var lienStatuses = await GetOperationalStatusesAsync(scopedLiens, period, ct);
         var sellerStatuses = await GetSellerStatusesAsync(scopedLiens, period, ct);
-        var timeSeries = await GetTimeSeriesAsync(scopedLiens, period, ct);
-        var topBuyers = await GetTopBuyersAsync(scopedLiens, tenantId, sellerOrgId, period, ct);
+        var timeSeries = await GetTimeSeriesAsync(scopedLiens, period.DateTo.Year, ct);
+        var topBuyers = await GetTopBuyersAsync(scopedLiens, tenantId, sellerOrgId, ct);
         var acceptedAging = await GetAcceptedBuyerAgingAsync(tenantId, sellerOrgId, period.DateTo, ct);
+        var comparisonAcceptedAging = comparisonPeriod.HasValue
+            ? await GetAcceptedBuyerAgingAsync(tenantId, sellerOrgId, comparisonPeriod.Value.DateTo, ct)
+            : null;
 
         return new SellingOperationsDashboardResponse
         {
@@ -67,23 +61,21 @@ public sealed class SellingOperationsDashboardService : ISellingOperationsDashbo
             Metrics = new SellingOperationsDashboardMetrics
             {
                 TotalLienRevenue = AvailableMetric(
-                    currentFinancials.LienRevenue,
-                    comparisonFinancials?.LienRevenue,
-                    "Sum of OriginalAmount for seller-scoped, non-archived liens whose InitialServiceDate is within the period."),
+                    financials.LienRevenue,
+                    null,
+                    "Sum of PurchasePrice for seller-scoped liens with completed sale evidence."),
                 TotalOutstanding = AvailableMetric(
-                    currentFinancials.Outstanding,
-                    comparisonFinancials?.Outstanding,
-                    "Sum of CurrentBalance, falling back to OriginalAmount when CurrentBalance is null, for the period lien cohort."),
-                PastAmountDue = new SellingOperationsMetric
-                {
-                    IsAvailable = false,
-                    Formula = "Unavailable in the selling operations dashboard read model.",
-                    UnavailableReason = PastAmountDueUnavailableReason,
-                },
+                    financials.Outstanding,
+                    null,
+                    "Sum of CurrentBalance, falling back to OriginalAmount when CurrentBalance is null, for all seller-scoped liens."),
+                PastAmountDue = AvailableMetric(
+                    acceptedAging.PastDueAmount,
+                    comparisonAcceptedAging?.PastDueAmount,
+                    "Sum of accepted buyer-response amounts aged 31 days or more as of the dashboard period end date."),
                 Payments = AvailableMetric(
-                    currentPayments,
-                    comparisonPayments,
-                    "Sum of non-deleted SettlementPaymentDetail.Amount values whose PaymentDate is within the period and whose lien belongs to the seller."),
+                    payments,
+                    null,
+                    "Sum of all non-deleted, non-voided SettlementPaymentDetail.Amount values for seller-scoped liens."),
             },
             ArAging = acceptedAging.ArAging,
             LienStatuses = lienStatuses,
@@ -224,7 +216,9 @@ public sealed class SellingOperationsDashboardService : ISellingOperationsDashbo
             {
                 IsAvailable = true,
                 Items = buyerItems,
-            });
+            },
+            rows.Where(row => row.Bucket is "31-60" or "61-90" or "91-120" or "120+")
+                .Sum(row => row.Amount));
     }
 
     private static List<SellingOperationsAgingBucket> BuildAgingBuckets(
@@ -282,14 +276,22 @@ public sealed class SellingOperationsDashboardService : ISellingOperationsDashbo
 
     private static async Task<FinancialAggregate> GetFinancialsAsync(
         IQueryable<Lien> scopedLiens,
-        DashboardPeriod period,
         CancellationToken ct)
     {
-        var row = await InPeriod(scopedLiens, period)
+        var row = await scopedLiens
             .GroupBy(_ => 1)
             .Select(group => new
             {
-                LienRevenue = group.Sum(l => l.OriginalAmount),
+                LienRevenue = group
+                    .Where(l =>
+                        (l.SellerStatus == SellingLienStatus.Sold ||
+                         l.Status == LienStatus.Sold ||
+                         l.Status == LienStatus.Active ||
+                         l.Status == LienStatus.Settled ||
+                         l.Status == LienStatus.Disputed) &&
+                        l.SoldAtUtc != null &&
+                        l.PurchasePrice.HasValue)
+                    .Sum(l => l.PurchasePrice!.Value),
                 Outstanding = group.Sum(l => l.CurrentBalance ?? l.OriginalAmount),
             })
             .FirstOrDefaultAsync(ct);
@@ -302,16 +304,13 @@ public sealed class SellingOperationsDashboardService : ISellingOperationsDashbo
     private async Task<decimal> GetPaymentsAsync(
         IQueryable<Lien> scopedLiens,
         Guid tenantId,
-        DashboardPeriod period,
         CancellationToken ct)
     {
         var row = await _db.SettlementPaymentDetails.AsNoTracking()
             .Where(payment => payment.TenantId == tenantId
                 && !payment.IsDeleted
                 && payment.PostingStatus != SettlementPaymentDetail.VoidedStatus
-                && payment.PaymentDate.HasValue
-                && payment.PaymentDate.Value >= period.DateFrom
-                && payment.PaymentDate.Value <= period.DateTo)
+                && payment.PaymentDate.HasValue)
             .Join(scopedLiens, payment => payment.LienId, lien => lien.Id, (payment, _) => payment)
             .GroupBy(_ => 1)
             .Select(group => new { Amount = group.Sum(payment => payment.Amount) })
@@ -399,10 +398,15 @@ public sealed class SellingOperationsDashboardService : ISellingOperationsDashbo
 
     private static async Task<List<SellingOperationsTimeseriesPoint>> GetTimeSeriesAsync(
         IQueryable<Lien> scopedLiens,
-        DashboardPeriod period,
+        int year,
         CancellationToken ct)
     {
-        var dailyGroups = await InPeriod(scopedLiens, period)
+        var yearStart = new DateOnly(year, 1, 1);
+        var yearEnd = new DateOnly(year, 12, 31);
+        var dailyGroups = await scopedLiens
+            .Where(l => l.InitialServiceDate.HasValue &&
+                l.InitialServiceDate.Value >= yearStart &&
+                l.InitialServiceDate.Value <= yearEnd)
             .GroupBy(l => l.InitialServiceDate!.Value)
             .Select(group => new
             {
@@ -413,16 +417,30 @@ public sealed class SellingOperationsDashboardService : ISellingOperationsDashbo
             })
             .ToListAsync(ct);
 
-        return dailyGroups
+        var monthlyGroups = dailyGroups
             .GroupBy(item => new DateOnly(item.Date.Year, item.Date.Month, 1))
-            .OrderBy(group => group.Key)
-            .Select(group => new SellingOperationsTimeseriesPoint
+            .ToDictionary(
+                group => group.Key,
+                group => new
+                {
+                    LienCount = group.Sum(item => item.LienCount),
+                    LienRevenue = group.Sum(item => item.LienRevenue),
+                    OutstandingAmount = group.Sum(item => item.OutstandingAmount),
+                });
+
+        return Enumerable.Range(1, 12)
+            .Select(month =>
             {
-                BucketStart = group.Key,
-                Grain = "month",
-                LienCount = group.Sum(item => item.LienCount),
-                LienRevenue = group.Sum(item => item.LienRevenue),
-                OutstandingAmount = group.Sum(item => item.OutstandingAmount),
+                var bucketStart = new DateOnly(year, month, 1);
+                var aggregate = monthlyGroups.GetValueOrDefault(bucketStart);
+                return new SellingOperationsTimeseriesPoint
+                {
+                    BucketStart = bucketStart,
+                    Grain = "month",
+                    LienCount = aggregate?.LienCount ?? 0,
+                    LienRevenue = aggregate?.LienRevenue ?? 0m,
+                    OutstandingAmount = aggregate?.OutstandingAmount ?? 0m,
+                };
             })
             .ToList();
     }
@@ -431,15 +449,11 @@ public sealed class SellingOperationsDashboardService : ISellingOperationsDashbo
         IQueryable<Lien> scopedLiens,
         Guid tenantId,
         Guid sellerOrgId,
-        DashboardPeriod period,
         CancellationToken ct)
     {
-        var buyerBalanceLiens = InPeriod(scopedLiens, period)
+        var buyerBalanceLiens = scopedLiens
             .Where(l => l.BuyingOrgId.HasValue
-                && l.Status != LienStatus.Settled
-                && l.Status != LienStatus.Cancelled
-                && l.Status != LienStatus.Declined
-                && l.Status != LienStatus.Withdrawn
+                && l.Status == LienStatus.Active
                 && (l.CurrentBalance ?? l.OriginalAmount) > 0m);
         var totalBalanceRow = await buyerBalanceLiens
             .GroupBy(_ => 1)
@@ -462,7 +476,7 @@ public sealed class SellingOperationsDashboardService : ISellingOperationsDashbo
             return [];
 
         var buyerOrgIds = buyers.Select(item => item.BuyerOrgId).ToList();
-        var completedPurchases = await InPeriod(scopedLiens, period)
+        var completedPurchases = await scopedLiens
             .Where(l => l.BuyingOrgId.HasValue
                 && buyerOrgIds.Contains(l.BuyingOrgId.Value)
                 && (l.SellerStatus == SellingLienStatus.Sold
@@ -486,7 +500,7 @@ public sealed class SellingOperationsDashboardService : ISellingOperationsDashbo
                 && offer.BuyerCompanyId.HasValue
                 && offer.Status == OfferStatus.Accepted)
             .Join(
-                InPeriod(scopedLiens, period),
+                buyerBalanceLiens,
                 offer => offer.LienId,
                 lien => lien.Id,
                 (offer, _) => new
@@ -661,5 +675,6 @@ public sealed class SellingOperationsDashboardService : ISellingOperationsDashbo
         string Bucket);
     private sealed record AcceptedBuyerAgingResult(
         SellingOperationsArAgingResponse ArAging,
-        SellingOperationsBuyerAgingResponse BuyerAging);
+        SellingOperationsBuyerAgingResponse BuyerAging,
+        decimal PastDueAmount);
 }

@@ -5880,6 +5880,7 @@ public static class CaseEndpoints
                 var description = i.EnrichReferences
                     ? LienHistoryDescriptionEnricher.Enrich(i.Description, historyReferenceDescriptions)
                     : i.Description;
+                description = NormalizeLienDetailsDescription(description, i.Action);
                 return new
                 {
                     id = i.Id,
@@ -5940,6 +5941,26 @@ public static class CaseEndpoints
 
     private static string NormalizeLegacyUpdateDescription(string? description) =>
         (description ?? string.Empty).Replace("ÔåÆ", "→", StringComparison.Ordinal);
+
+    private static string NormalizeLienDetailsDescription(string description, string action)
+    {
+        if (!string.Equals(action, "Liens Details", StringComparison.Ordinal))
+            return description;
+
+        return ReplaceLienDetailsValue(ReplaceLienDetailsValue(description, "blank"), "Draft");
+    }
+
+    private static string ReplaceLienDetailsValue(string description, string value)
+    {
+        var normalized = description
+            .Replace($": {value} →", ": \"\" →", StringComparison.Ordinal)
+            .Replace($"→ {value};", "→ \"\";", StringComparison.Ordinal)
+            .Replace($"→ {value}.", "→ \"\".", StringComparison.Ordinal);
+
+        return normalized.EndsWith($"→ {value}", StringComparison.Ordinal)
+            ? $"{normalized[..^value.Length]}\"\""
+            : normalized;
+    }
 
     private static string NormalizeCaseCreatedActor(string description, string action, string? actorName)
     {

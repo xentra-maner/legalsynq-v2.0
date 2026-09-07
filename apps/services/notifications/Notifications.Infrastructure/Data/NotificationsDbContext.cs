@@ -9,6 +9,7 @@ public class NotificationsDbContext : DbContext
         : base(options) { }
 
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<UserInboxItem> UserInboxItems => Set<UserInboxItem>();
     public DbSet<NotificationAttempt> NotificationAttempts => Set<NotificationAttempt>();
     public DbSet<Template> Templates => Set<Template>();
     public DbSet<TemplateVersion> TemplateVersions => Set<TemplateVersion>();
@@ -95,6 +96,7 @@ public class NotificationsDbContext : DbContext
         base.OnModelCreating(modelBuilder);
 
         modelBuilder.ApplyConfiguration(new Configurations.NotificationConfiguration());
+        modelBuilder.ApplyConfiguration(new Configurations.UserInboxItemConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.NotificationAttemptConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.TemplateConfiguration());
         modelBuilder.ApplyConfiguration(new Configurations.TemplateVersionConfiguration());

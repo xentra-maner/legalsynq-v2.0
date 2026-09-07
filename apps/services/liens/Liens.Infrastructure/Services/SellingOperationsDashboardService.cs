@@ -451,8 +451,16 @@ public sealed class SellingOperationsDashboardService : ISellingOperationsDashbo
         Guid sellerOrgId,
         CancellationToken ct)
     {
+        // Top buyers are limited to funders that accepted a lien offer from this seller;
+        // buyers whose holdings never went through an accepted offer are excluded.
+        var acceptedBuyerOrgIds = _db.LienOffers.AsNoTracking()
+            .Where(offer => offer.TenantId == tenantId
+                && offer.SellerOrgId == sellerOrgId
+                && offer.Status == OfferStatus.Accepted)
+            .Select(offer => offer.BuyerOrgId);
         var buyerBalanceLiens = scopedLiens
             .Where(l => l.BuyingOrgId.HasValue
+                && acceptedBuyerOrgIds.Contains(l.BuyingOrgId.Value)
                 && l.Status == LienStatus.Active
                 && (l.CurrentBalance ?? l.OriginalAmount) > 0m);
         var totalBalanceRow = await buyerBalanceLiens

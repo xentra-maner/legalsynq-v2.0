@@ -384,6 +384,51 @@ public class SellingOperationsDashboardEndpointTests : IClassFixture<LiensApiFac
         body.TopBuyers[0].PercentOfTotalBalance.Should().Be(100m);
     }
 
+    [Fact]
+    public async Task Dashboard_top_buyers_excludes_buyers_without_an_accepted_offer()
+    {
+        var acceptedBuyerOrgId = Guid.CreateVersion7();
+        var acceptedBuyerCompany = Company.Create(
+            SeedHelper.TenantId,
+            SeedHelper.OrgId,
+            CompanyDirectoryReferenceData.FundingCompanyId,
+            "Accepted Offer Capital",
+            SeedHelper.UserId);
+        var acceptedLien = CreateLien("ACCEPTED-BUYER", new DateOnly(2026, 4, 15), 4_000m, 2_500m);
+        acceptedLien.ListForSale(3_500m, SeedHelper.UserId);
+        acceptedLien.MarkSold(3_000m, acceptedBuyerOrgId, SeedHelper.UserId);
+        acceptedLien.Activate(SeedHelper.UserId);
+        var acceptedOffer = LienOffer.Create(
+            SeedHelper.TenantId,
+            acceptedLien.Id,
+            acceptedBuyerOrgId,
+            SeedHelper.OrgId,
+            3_000m,
+            SeedHelper.UserId);
+        acceptedOffer.LinkCanonicalBuyer(acceptedBuyerCompany.Id);
+        acceptedOffer.Accept(SeedHelper.UserId);
+        SetProperty(acceptedOffer, nameof(LienOffer.RespondedAtUtc), new DateTime(2026, 4, 20, 8, 0, 0, DateTimeKind.Utc));
+
+        // Buyer with a larger active balance but no accepted offer must not appear.
+        var noOfferBuyerOrgId = Guid.CreateVersion7();
+        var noOfferLien = CreateLien("NO-OFFER-BUYER", new DateOnly(2026, 4, 16), 9_000m, 8_000m);
+        noOfferLien.ListForSale(7_000m, SeedHelper.UserId);
+        noOfferLien.MarkSold(6_000m, noOfferBuyerOrgId, SeedHelper.UserId);
+        noOfferLien.Activate(SeedHelper.UserId);
+
+        await SeedAsync(db => db.AddRange(acceptedBuyerCompany, acceptedLien, noOfferLien, acceptedOffer));
+
+        var response = await _client.GetAsync(
+            "/api/liens/selling/analytics/dashboard?startDate=2026-04-01&endDate=2026-04-30&compare=none");
+        var body = await response.Content.ReadFromJsonAsync<SellingOperationsDashboardResponse>();
+
+        body.Should().NotBeNull();
+        body!.TopBuyers.Should().ContainSingle();
+        body.TopBuyers[0].BuyerOrgId.Should().Be(acceptedBuyerOrgId);
+        body.TopBuyers[0].BuyerName.Should().Be("Accepted Offer Capital");
+        body.TopBuyers[0].PercentOfTotalBalance.Should().Be(100m);
+    }
+
     [Theory]
     [InlineData("?startDate=2026-01-01")]
     [InlineData("?dateFrom=2026-01-01")]

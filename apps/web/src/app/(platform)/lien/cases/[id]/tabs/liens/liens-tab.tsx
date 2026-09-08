@@ -66,7 +66,9 @@ export function LiensTab({
   const deleteLien = useDeleteLien(caseId);
 
   const [pagination, setPagination] = useState<PaginationMeta>(liensPagination);
-  const [sorting, setSorting] = useState<SortingState>([]);
+  const [sorting, setSorting] = useState<SortingState>([
+    { desc: true, id: "lienNumber" },
+  ]);
 
   const serverQuery = useMemo<LiensQuery>(
     () => ({
@@ -82,7 +84,11 @@ export function LiensTab({
     }),
     [liensPagination.pageSize, filters, sorting],
   );
-  const { data: filteredLiens } = useCaseLiens(caseId, serverQuery, "liens");
+  const { data: filteredLiens, isLoading } = useCaseLiens(
+    caseId,
+    serverQuery,
+    "liens",
+  );
   const liensData = (filteredLiens?.items ??
     liensProp) as unknown as (CaseLienItem & CaseLienItemMetadata)[];
 
@@ -305,6 +311,7 @@ export function LiensTab({
         onRowClick={(id) => router.push(`/lien/cases/${caseId}/liens/${id}`)}
         onSortingChange={(e) => setSorting(e)}
         sorting={sorting}
+        isLoading={isLoading}
       />
 
       <LienUpdatesSection

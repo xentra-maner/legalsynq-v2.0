@@ -535,17 +535,11 @@ export function AddPaymentForm({
     onClose();
   };
 
-  const formatDate = (dateString: string) => {
-    if (!dateString) return "";
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat("en-CA").format(date);
-  };
-
   const handleSave = async () => {
     setSaving(true);
     try {
       const lienIds = Array.from(checkedIds);
-      const paymentDate = form.checkDate ? formatDate(form.checkDate) : "";
+      const paymentDate = form.checkDate;
 
       if (isEditing) {
         await settlementService.updateSettlementPayment(form.id, {

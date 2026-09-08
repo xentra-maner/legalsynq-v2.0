@@ -73,14 +73,17 @@ export function DocumentsTab({
       setIsSubmitting(true);
       try {
         setIsSubmitting(true);
-
+        const docType =
+          (selectedDocType != ""
+            ? selectedDocType
+            : selectedMergeFiles.form?.selectedDocType) || "";
         for (const element of payload) {
           const formData = new FormData();
           formData.append("File", element ?? "");
           formData.append("caseId", caseDetail.id ?? "");
           formData.append("DocName", element.name);
           formData.append("DocDescription", "Legacy Case Document upload");
-          formData.append("DocFileTypeId", selectedDocType);
+          formData.append("DocFileTypeId", docType);
 
           await casesService.uploadCaseDocuments(formData);
           addToast({
@@ -370,9 +373,9 @@ export function DocumentsTab({
             documents={caseDocuments}
             documentTypes={docTypes}
             selectedDocument={mergeFile.document}
-            apiService={(documents, form) =>
-              setSelectedMergeFiles({ document: documents, form: form })
-            }
+            apiService={(documents, form) => {
+              setSelectedMergeFiles({ document: documents, form: form });
+            }}
           />
         </Modal>
       )}

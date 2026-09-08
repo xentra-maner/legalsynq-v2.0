@@ -14,7 +14,6 @@ export function CaseDocumentsSection({
   onDelete: (id: string) => void;
   onMerge: (id: DocumentType) => void;
 }) {
-  console.log(caseDocuments);
   const caseDocumentsColumns: ColumnDef<DocumentType, any>[] = [
     {
       id: "filename",

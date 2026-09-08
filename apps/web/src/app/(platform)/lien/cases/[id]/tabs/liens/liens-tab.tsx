@@ -80,7 +80,7 @@ export function LiensTab({
       initialServiceDateFrom: filters.initialServiceDateFrom || undefined,
       initialServiceDateTo: filters.initialServiceDateTo || undefined,
       sortBy: sorting[0]?.id ?? "lienNumber",
-      sortDirection: sorting[0]?.desc ? "desc" : "asc",
+      sortDirection: !sorting.length || sorting[0]?.desc ? "desc" : "asc",
     }),
     [liensPagination.pageSize, filters, sorting],
   );
@@ -309,7 +309,9 @@ export function LiensTab({
         onFilterClick={() => setShowFilter(true)}
         activeFilterCount={activeFilterCount}
         onRowClick={(id) => router.push(`/lien/cases/${caseId}/liens/${id}`)}
-        onSortingChange={(e) => setSorting(e)}
+        onSortingChange={(e) => {
+          setSorting(e);
+        }}
         sorting={sorting}
         isLoading={isLoading}
       />

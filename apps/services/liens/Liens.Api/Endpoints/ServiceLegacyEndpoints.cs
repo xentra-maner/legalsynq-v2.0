@@ -632,7 +632,10 @@ public static class ServiceLegacyEndpoints
             ClaimNumber = existing.ClaimNumber,
             Description = existing.Description,
             Notes = existing.Notes,
-            Status = string.IsNullOrWhiteSpace(request.caseStatusId) ? existing.Status : request.caseStatusId,
+            Status = string.IsNullOrWhiteSpace(request.caseStatusId)
+                ? existing.Status
+                : CaseEndpoints.NormalizeLegacyCaseStatus(request.caseStatusId),
+            StatusLabel = CaseEndpoints.ResolveLegacyCaseStatusLabel(request.caseStatusId),
             DemandAmount = existing.DemandAmount,
             SettlementAmount = existing.SettlementAmount,
             IsUccFiled = request.isUCCFiled,

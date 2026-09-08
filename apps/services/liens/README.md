@@ -204,7 +204,7 @@ the lien's current balance, so closing a lien does not replace its payment-time 
 The legacy payment-details response returns the grouped legacy value (`Open` or `Closed`) in both
 `lienStatus` and `lienStatusId` rather than exposing the canonical persisted lien status.
 
-List filters accept both canonical persisted statuses and the legacy/UI lifecycle groups: `Open` expands to all active lien states, `Closed` expands to `Settled`, and `Rejected` expands to `Declined`, `Withdrawn`, and `Cancelled`. Historical rows literally persisted as `Rejected` remain hidden by default. Status/date-only lien-list filters are counted and paged in the database before per-lien detail and servicing enrichment, so broad status selections do not enrich the entire matching result set. The V3 case filter accepts comma-separated status, law-firm, case-manager, and accident-type selections. Case status filtering uses the saved legacy status label to distinguish `New`, `Processing`, and `Pre-Demand` cases that share the canonical `PreDemand` state, and to distinguish `Litigation` from `Negotiations` cases that share `InNegotiation`. The complete SL-CORE import preserves those labels, and the guarded relationship backfill repairs them for already-imported cases that have not since changed status. Law-firm values match the contact ID saved in case metadata and continue to accept legacy organization IDs.
+List filters accept both canonical persisted statuses and the legacy/UI lifecycle groups: `Open` expands to all active lien states, `Closed` expands to `Settled`, and `Rejected` expands to `Declined`, `Withdrawn`, and `Cancelled`. Historical rows literally persisted as `Rejected` remain hidden by default. The lien list supports ascending or descending `purchaseDate`, `isServicing`, and `amountReceived` ordering; amount received is the sum of non-deleted, non-voided settlement payments per lien. Status/date-only lien-list filters are counted and paged in the database before per-lien detail and servicing enrichment, so broad status selections do not enrich the entire matching result set. The V3 case filter accepts comma-separated status, law-firm, case-manager, and accident-type selections. Case status filtering uses the saved legacy status label to distinguish `New`, `Processing`, and `Pre-Demand` cases that share the canonical `PreDemand` state, and to distinguish `Litigation` from `Negotiations` cases that share `InNegotiation`. The complete SL-CORE import preserves those labels, and the guarded relationship backfill repairs them for already-imported cases that have not since changed status. Law-firm values match the contact ID saved in case metadata and continue to accept legacy organization IDs.
 
 ## Selling Workflow
 
@@ -368,8 +368,13 @@ MySqlConnector user variables for this guarded DDL; callers do not need to appen
 `ConnectionStrings:LiensDb` themselves.
 
 The same startup recovery verifies the case-payment ledger and legacy report-parity columns, including
-`liens_SettlementPaymentDetails.PostingStatus`. This prevents case-detail and cash-received endpoints from serving
+`liens_SettlementPaymentDetails.PostingStatus` and `liens_LienOffers.SubmittedByPlatformUserId` (from
+`20260906010000_AddSellingNotificationInboxOutbox`; without it every selling lien-detail read fails with a MySQL
+"Unknown column" error). This prevents case-detail, cash-received, and selling lien-detail endpoints from serving
 against a partially applied MySQL schema; after repair, EF reruns migrations to record any missing history entries.
+For an environment where the API cannot run, `scripts/apply-selling-notification-inbox-outbox-migration.sql` applies
+`20260906010000_AddSellingNotificationInboxOutbox` (the `SubmittedByPlatformUserId` column plus the
+`liens_SellingNotificationOutbox` table) as a restart-safe, self-recording manual step.
 
 If the Selling case-draft migration is absent in an environment where the Liens API cannot complete startup migration,
 run [`scripts/apply-selling-case-draft-migration.sql`](../../../scripts/apply-selling-case-draft-migration.sql) against

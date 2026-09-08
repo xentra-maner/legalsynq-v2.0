@@ -54,6 +54,23 @@ internal static class RootEntityHistoryFormatter
         return Equals(previousValue, currentValue);
     }
 
+    /// <summary>
+    /// Compares the legacy yes/no flag columns (<c>IsBulk</c>, <c>IsServicing</c>) semantically so a
+    /// cosmetic re-encoding such as "N" → "No" or "Y" → "Yes" is not logged as a real change.
+    /// </summary>
+    internal static bool FlagValuesEqual(object? previousValue, object? currentValue) =>
+        string.Equals(
+            NormalizeFlag(previousValue as string),
+            NormalizeFlag(currentValue as string),
+            StringComparison.Ordinal);
+
+    private static string NormalizeFlag(string? value) =>
+        value?.Trim().ToUpperInvariant() switch
+        {
+            "TRUE" or "YES" or "Y" or "1" => "YES",
+            _ => "NO",
+        };
+
     internal static bool CaseStatusesEqual(object? previousValue, object? currentValue) =>
         string.Equals(
             NormalizeCaseStatus(previousValue as string),

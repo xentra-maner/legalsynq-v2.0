@@ -478,6 +478,44 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task GetCaseById_suppresses_settlement_status_when_it_repeats_the_lien_status_rollup()
+    {
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var lien = await db.Liens.FindAsync(SeedHelper.LienId);
+            lien!.SetLegacyMedicalStatus("Closed", SeedHelper.UserId);
+            await db.SaveChangesAsync();
+        }
+
+        var createResponse = await _client.PostAsJsonAsync("/api/liens/settlement/payments", new
+        {
+            caseId = SeedHelper.CaseId,
+            lienId = SeedHelper.LienId,
+            amount = 250m,
+            paymentDate = "2026-08-25",
+            paymentMethod = "Check",
+            referenceNumber = "CHK-CLOSED-CLOSED",
+            notes = "",
+            settlementType = "by_attorney",
+            settlementStatus = "Closed",
+            lienStatus = "Closed",
+        });
+        createResponse.StatusCode.Should().Be(HttpStatusCode.Created,
+            $"Body: {await createResponse.Content.ReadAsStringAsync()}");
+
+        var caseResponse = await _client.GetAsync($"/api/liens/cases/{SeedHelper.CaseId}");
+        caseResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await caseResponse.Content.ReadAsStringAsync()}");
+
+        var caseBody = await caseResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        caseBody!.RootElement.GetProperty("lienStatus").GetString().Should().Be("Closed");
+        // Would otherwise be "Closed", which the UI renders as a redundant "Closed-Closed" chip.
+        caseBody.RootElement.GetProperty("settlementStatus").GetString().Should().BeEmpty();
+        caseBody.RootElement.GetProperty("settlementStatusId").GetString().Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task GetCaseById_returns_open_lien_status_when_newest_lien_is_closed()
     {
         using (var scope = _factory.Services.CreateScope())

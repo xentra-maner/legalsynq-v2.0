@@ -213,6 +213,12 @@ public static class CasePaymentEndpoints
             return ValidationError("amount", message, message);
         }
 
+        if (request.Allocations.Sum(item => item.Amount) != request.Amount)
+        {
+            if (transaction is not null) await transaction.RollbackAsync(CancellationToken.None);
+            return ValidationError("allocations", "Allocation amounts must equal the payment amount.");
+        }
+
         foreach (var allocation in request.Allocations)
         {
             var lien = visibleLiens.Single(item => item.Id == allocation.LienId);
@@ -429,8 +435,9 @@ public static class CasePaymentEndpoints
             return ValidationError("allocations", "Each allocation requires a lienId and an amount greater than zero.");
         if (request.Allocations.Select(item => item.LienId).Distinct().Count() != request.Allocations.Count)
             return ValidationError("allocations", "Each lien may be allocated only once per payment.");
-        if (request.Allocations.Sum(item => item.Amount) != request.Amount)
-            return ValidationError("allocations", "Allocation amounts must equal the payment amount.");
+        // The allocation-sum equality check is enforced in RecordPayment, after the
+        // available-balance check, so that an over-balance payment reports the specific
+        // "exceeds the available balance" message instead of this generic mismatch.
         return null;
     }
 

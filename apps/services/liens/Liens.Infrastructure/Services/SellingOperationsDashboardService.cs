@@ -47,11 +47,11 @@ public sealed class SellingOperationsDashboardService : ISellingOperationsDashbo
         var lienStatuses = await GetOperationalStatusesAsync(scopedLiens, period, ct);
         var sellerStatuses = await GetSellerStatusesAsync(scopedLiens, period, ct);
         var timeSeries = await GetTimeSeriesAsync(scopedLiens, period.DateTo.Year, ct);
-        var topBuyers = await GetTopBuyersAsync(scopedLiens, tenantId, sellerOrgId, ct);
         var acceptedAging = await GetAcceptedBuyerAgingAsync(tenantId, sellerOrgId, period.DateTo, ct);
         var comparisonAcceptedAging = comparisonPeriod.HasValue
             ? await GetAcceptedBuyerAgingAsync(tenantId, sellerOrgId, comparisonPeriod.Value.DateTo, ct)
             : null;
+        var topBuyers = BuildTopBuyers(acceptedAging.BuyerAging.Items);
 
         return new SellingOperationsDashboardResponse
         {
@@ -445,116 +445,33 @@ public sealed class SellingOperationsDashboardService : ISellingOperationsDashbo
             .ToList();
     }
 
-    private async Task<List<SellingOperationsTopBuyerItem>> GetTopBuyersAsync(
-        IQueryable<Lien> scopedLiens,
-        Guid tenantId,
-        Guid sellerOrgId,
-        CancellationToken ct)
+    // Top buyers are the top 5 funding companies that accepted this seller's lien offers,
+    // ranked by accepted amount. Derived from the same accepted buyer-response data as the
+    // buyer aging table so the two views stay consistent (a buyer only reaches this list by
+    // accepting an offer, not by merely holding liens).
+    private static List<SellingOperationsTopBuyerItem> BuildTopBuyers(
+        IReadOnlyList<SellingOperationsBuyerAgingItem> acceptedBuyers)
     {
-        // Top buyers are limited to funders that accepted a lien offer from this seller;
-        // buyers whose holdings never went through an accepted offer are excluded.
-        var acceptedBuyerOrgIds = _db.LienOffers.AsNoTracking()
-            .Where(offer => offer.TenantId == tenantId
-                && offer.SellerOrgId == sellerOrgId
-                && offer.Status == OfferStatus.Accepted)
-            .Select(offer => offer.BuyerOrgId);
-        var buyerBalanceLiens = scopedLiens
-            .Where(l => l.BuyingOrgId.HasValue
-                && acceptedBuyerOrgIds.Contains(l.BuyingOrgId.Value)
-                && l.Status == LienStatus.Active
-                && (l.CurrentBalance ?? l.OriginalAmount) > 0m);
-        var totalBalanceRow = await buyerBalanceLiens
-            .GroupBy(_ => 1)
-            .Select(group => new { TotalBalance = group.Sum(l => l.CurrentBalance ?? l.OriginalAmount) })
-            .FirstOrDefaultAsync(ct);
-        var buyers = await buyerBalanceLiens
-            .GroupBy(l => l.BuyingOrgId!.Value)
-            .Select(group => new
-            {
-                BuyerOrgId = group.Key,
-                ActiveLienCount = group.Count(),
-                TotalBalance = group.Sum(l => l.CurrentBalance ?? l.OriginalAmount),
-            })
-            .OrderByDescending(item => item.TotalBalance)
-            .ThenBy(item => item.BuyerOrgId)
+        var totalAccepted = acceptedBuyers.Sum(buyer => buyer.Total);
+
+        return acceptedBuyers
+            .OrderByDescending(buyer => buyer.Total)
+            .ThenBy(buyer => buyer.BuyerName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(buyer => buyer.BuyerOrgId)
             .Take(5)
-            .ToListAsync(ct);
-
-        if (buyers.Count == 0)
-            return [];
-
-        var buyerOrgIds = buyers.Select(item => item.BuyerOrgId).ToList();
-        var completedPurchases = await scopedLiens
-            .Where(l => l.BuyingOrgId.HasValue
-                && buyerOrgIds.Contains(l.BuyingOrgId.Value)
-                && (l.SellerStatus == SellingLienStatus.Sold
-                    || l.Status == LienStatus.Sold
-                    || l.Status == LienStatus.Active
-                    || l.Status == LienStatus.Settled
-                    || l.Status == LienStatus.Disputed)
-                && l.SoldAtUtc != null
-                && l.PurchasePrice.HasValue)
-            .GroupBy(l => l.BuyingOrgId!.Value)
-            .Select(group => new
+            .Select(buyer => new SellingOperationsTopBuyerItem
             {
-                BuyerOrgId = group.Key,
-                Amount = group.Sum(l => l.PurchasePrice!.Value),
-            })
-            .ToDictionaryAsync(item => item.BuyerOrgId, item => item.Amount, ct);
-        var companyLinks = await _db.LienOffers.AsNoTracking()
-            .Where(offer => offer.TenantId == tenantId
-                && offer.SellerOrgId == sellerOrgId
-                && buyerOrgIds.Contains(offer.BuyerOrgId)
-                && offer.BuyerCompanyId.HasValue
-                && offer.Status == OfferStatus.Accepted)
-            .Join(
-                buyerBalanceLiens,
-                offer => offer.LienId,
-                lien => lien.Id,
-                (offer, _) => new
-                {
-                    offer.Id,
-                    offer.BuyerOrgId,
-                    BuyerCompanyId = offer.BuyerCompanyId!.Value,
-                    offer.RespondedAtUtc,
-                    offer.OfferedAtUtc,
-                })
-            .OrderBy(link => link.BuyerOrgId)
-            .ThenByDescending(link => link.RespondedAtUtc)
-            .ThenByDescending(link => link.OfferedAtUtc)
-            .ThenBy(link => link.Id)
-            .ToListAsync(ct);
-        var companyByBuyerOrg = companyLinks
-            .GroupBy(link => link.BuyerOrgId)
-            .ToDictionary(group => group.Key, group => (Guid?)group.First().BuyerCompanyId);
-        var companyIds = companyByBuyerOrg.Values.Where(id => id.HasValue).Select(id => id!.Value).Distinct().ToList();
-        var companyNames = companyIds.Count == 0
-            ? new Dictionary<Guid, string>()
-            : await _db.Companies.AsNoTracking()
-                .Where(company => company.TenantId == tenantId
-                    && company.OrgId == sellerOrgId
-                    && companyIds.Contains(company.Id))
-                .ToDictionaryAsync(company => company.Id, company => company.Name, ct);
-        var totalBalance = totalBalanceRow?.TotalBalance ?? 0m;
-
-        return buyers.Select(item =>
-        {
-            var companyId = companyByBuyerOrg.GetValueOrDefault(item.BuyerOrgId);
-            return new SellingOperationsTopBuyerItem
-            {
-                BuyerOrgId = item.BuyerOrgId,
-                BuyerCompanyId = companyId,
-                BuyerName = companyId.HasValue && companyNames.TryGetValue(companyId.Value, out var name)
-                    ? name
-                    : item.BuyerOrgId.ToString(),
-                ActiveLienCount = item.ActiveLienCount,
-                TotalBalance = item.TotalBalance,
-                CompletedPurchaseAmount = completedPurchases.GetValueOrDefault(item.BuyerOrgId),
-                PercentOfTotalBalance = totalBalance == 0m
+                BuyerOrgId = buyer.BuyerOrgId,
+                BuyerCompanyId = buyer.BuyerCompanyId,
+                BuyerName = buyer.BuyerName,
+                ActiveLienCount = buyer.Buckets.Sum(bucket => bucket.LienCount),
+                TotalBalance = buyer.Total,
+                CompletedPurchaseAmount = buyer.Total,
+                PercentOfTotalBalance = totalAccepted == 0m
                     ? 0m
-                    : decimal.Round(item.TotalBalance * 100m / totalBalance, 2),
-            };
-        }).ToList();
+                    : decimal.Round(buyer.Total * 100m / totalAccepted, 2),
+            })
+            .ToList();
     }
 
     private static SellingOperationsStatusItem ToStatusItem(

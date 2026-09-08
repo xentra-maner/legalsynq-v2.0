@@ -3171,7 +3171,7 @@ public static class CaseEndpoints
         return segments.Length > 0 && segments.All(segment => segment.Contains('='));
     }
 
-    private static string NormalizeLegacyCaseStatus(string value)
+    internal static string NormalizeLegacyCaseStatus(string value)
     {
         var normalized = value.Trim();
         var compact = normalized
@@ -3194,7 +3194,7 @@ public static class CaseEndpoints
         };
     }
 
-    private static string? ResolveLegacyCaseStatusLabel(string? value)
+    internal static string? ResolveLegacyCaseStatusLabel(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
             return null;

@@ -1043,6 +1043,117 @@ public class LienEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
     }
 
     [Fact]
+    public async Task ListLiens_sorts_by_purchase_date_and_servicing_status()
+    {
+        var caseId = Guid.CreateVersion7();
+        const string earlierPurchaseLienNumber = "26-700001-01";
+        const string laterPurchaseLienNumber = "26-700001-02";
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                "26-700001",
+                "Sort",
+                "Tester",
+                SeedHelper.UserId);
+            typeof(Case).GetProperty(nameof(Case.Id))!.SetValue(caseEntity, caseId);
+            db.Cases.Add(caseEntity);
+
+            var earlierPurchaseLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                earlierPurchaseLienNumber,
+                LienType.MedicalLien,
+                100m,
+                SeedHelper.UserId,
+                caseId: caseId,
+                incidentDate: new DateOnly(2025, 12, 31),
+                isServicing: "false",
+                purchaseDate: new DateOnly(2024, 1, 15));
+            var laterPurchaseLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                laterPurchaseLienNumber,
+                LienType.MedicalLien,
+                100m,
+                SeedHelper.UserId,
+                caseId: caseId,
+                incidentDate: new DateOnly(2024, 1, 1),
+                isServicing: "true",
+                purchaseDate: new DateOnly(2024, 12, 15));
+            var voidedPayment = SettlementPaymentDetail.Create(
+                SeedHelper.TenantId,
+                caseId,
+                earlierPurchaseLien.Id,
+                2,
+                500m,
+                SeedHelper.UserId);
+            voidedPayment.Void(SeedHelper.UserId, "Test voided payment");
+
+            db.Liens.AddRange(earlierPurchaseLien, laterPurchaseLien);
+            db.SettlementPaymentDetails.AddRange(
+                SettlementPaymentDetail.Create(
+                    SeedHelper.TenantId,
+                    caseId,
+                    earlierPurchaseLien.Id,
+                    1,
+                    100m,
+                    SeedHelper.UserId),
+                SettlementPaymentDetail.Create(
+                    SeedHelper.TenantId,
+                    caseId,
+                    laterPurchaseLien.Id,
+                    1,
+                    300m,
+                    SeedHelper.UserId),
+                voidedPayment);
+            await db.SaveChangesAsync();
+        }
+
+        var purchaseDateAsc = await _client.GetFromJsonAsync<PaginatedLiensResponseBody>(
+            $"/api/liens/liens?caseId={caseId}&pageSize=20&sortBy=purchaseDate&sortDirection=asc");
+        purchaseDateAsc!.Items.Select(item => item.LienNumber)
+            .Should().Equal(earlierPurchaseLienNumber, laterPurchaseLienNumber);
+
+        var purchaseDateDesc = await _client.GetFromJsonAsync<PaginatedLiensResponseBody>(
+            $"/api/liens/liens?caseId={caseId}&pageSize=20&sortBy=purchaseDate&sortDirection=desc");
+        purchaseDateDesc!.Items.Select(item => item.LienNumber)
+            .Should().Equal(laterPurchaseLienNumber, earlierPurchaseLienNumber);
+
+        var servicingAsc = await _client.GetFromJsonAsync<PaginatedLiensResponseBody>(
+            $"/api/liens/liens?caseId={caseId}&pageSize=20&sortBy=isServicing&sortDirection=asc");
+        servicingAsc!.Items.Select(item => item.LienNumber)
+            .Should().Equal(earlierPurchaseLienNumber, laterPurchaseLienNumber);
+
+        var servicingDesc = await _client.GetFromJsonAsync<PaginatedLiensResponseBody>(
+            $"/api/liens/liens?caseId={caseId}&pageSize=20&sortBy=isServicing&sortDirection=desc");
+        servicingDesc!.Items.Select(item => item.LienNumber)
+            .Should().Equal(laterPurchaseLienNumber, earlierPurchaseLienNumber);
+
+        var amountReceivedAscResponse = await _client.GetAsync(
+            $"/api/liens/liens?caseId={caseId}&pageSize=20&sortBy=amountReceived&sortDirection=asc");
+        amountReceivedAscResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await amountReceivedAscResponse.Content.ReadAsStringAsync()}");
+        var amountReceivedAsc = await amountReceivedAscResponse.Content
+            .ReadFromJsonAsync<PaginatedLiensResponseBody>();
+        amountReceivedAsc!.Items.Select(item => item.LienNumber)
+            .Should().Equal(earlierPurchaseLienNumber, laterPurchaseLienNumber);
+
+        var amountReceivedDesc = await _client.GetFromJsonAsync<PaginatedLiensResponseBody>(
+            $"/api/liens/liens?caseId={caseId}&pageSize=20&sortBy=amountReceived&sortDirection=desc");
+        amountReceivedDesc!.Items.Select(item => item.LienNumber)
+            .Should().Equal(laterPurchaseLienNumber, earlierPurchaseLienNumber);
+
+        var paymentAliasAsc = await _client.GetFromJsonAsync<PaginatedLiensResponseBody>(
+            $"/api/liens/liens?caseId={caseId}&pageSize=20&sortBy=payment&sortDirection=asc");
+        paymentAliasAsc!.Items.Select(item => item.LienNumber)
+            .Should().Equal(earlierPurchaseLienNumber, laterPurchaseLienNumber);
+    }
+
+    [Fact]
     public async Task ListLiens_purchase_date_range_is_inclusive_for_from_and_to()
     {
         var july17CaseId = Guid.CreateVersion7();

@@ -116,6 +116,66 @@ public sealed class CasePaymentEndpointTests : IClassFixture<LiensApiFactory>, I
     }
 
     [Fact]
+    public async Task RecordPayment_reports_balance_message_when_amount_exceeds_balance_and_allocations_are_capped()
+    {
+        // Mirrors the client behaviour of capping each allocation at the lien's remaining
+        // balance: the payment amount ($600) exceeds the $500 balance while the allocation
+        // is capped at $500, so the amounts no longer match. The response must still explain
+        // that the amount exceeds the balance rather than the generic allocation mismatch.
+        var request = new
+        {
+            amount = 600m,
+            paymentDate = "2026-08-24",
+            paymentMethod = "ACH",
+            referenceNumber = "ACH-9002",
+            detailsContext = "Attorney trust account",
+            notes = "Case payment test",
+            settlementType = "by_attorney",
+            settlementStatus = "partial_payment",
+            lienStatus = "Active",
+            allocations = new[] { new { lienId = SeedHelper.LienId, amount = 500m } },
+        };
+
+        var response = await PostPaymentAsync(request, "case-payment-capped-allocation");
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest, await response.Content.ReadAsStringAsync());
+        var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        body!.RootElement.GetProperty("error").GetProperty("message").GetString()
+            .Should().Be("Payment amount cannot exceed the available balance of $500.00.");
+        body!.RootElement.GetProperty("error").GetProperty("fields").TryGetProperty("amount", out _)
+            .Should().BeTrue();
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        (await db.SettlementPaymentDetails.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task RecordPayment_rejects_allocation_total_mismatch_within_balance()
+    {
+        var request = new
+        {
+            amount = 300m,
+            paymentDate = "2026-08-24",
+            paymentMethod = "ACH",
+            referenceNumber = "ACH-9003",
+            detailsContext = "Attorney trust account",
+            notes = "Case payment test",
+            settlementType = "by_attorney",
+            settlementStatus = "partial_payment",
+            lienStatus = "Active",
+            allocations = new[] { new { lienId = SeedHelper.LienId, amount = 250m } },
+        };
+
+        var response = await PostPaymentAsync(request, "case-payment-allocation-mismatch");
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest, await response.Content.ReadAsStringAsync());
+        var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        body!.RootElement.GetProperty("error").GetProperty("fields").GetProperty("allocations")[0].GetString()
+            .Should().Be("Allocation amounts must equal the payment amount.");
+    }
+
+    [Fact]
     public async Task RecordPayment_rejects_idempotency_key_reuse_with_different_body()
     {
         const string key = "case-payment-reused-key";

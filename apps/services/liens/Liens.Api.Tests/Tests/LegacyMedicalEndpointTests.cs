@@ -91,6 +91,60 @@ public class LegacyMedicalEndpointTests : IClassFixture<LiensApiFactory>, IAsync
     }
 
     [Fact]
+    public async Task UpdateMedical_does_not_log_bulk_or_servicing_when_only_the_yes_no_encoding_changes()
+    {
+        var lien = Lien.Create(
+            SeedHelper.TenantId,
+            SeedHelper.OrgId,
+            $"LIEN-FLAG-{Guid.CreateVersion7():N}"[..28],
+            LienType.MedicalLien,
+            100m,
+            SeedHelper.UserId,
+            caseId: SeedHelper.CaseId,
+            isBulk: "Y",
+            isServicing: "N",
+            notes: "Original flag note");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.Liens.Add(lien);
+            await db.SaveChangesAsync();
+        }
+
+        // Legacy "Y"/"N" re-encoded as "Yes"/"No" is the same value and must not be logged;
+        // the real note change still must be.
+        var updateResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens/update-medical",
+            new
+            {
+                id = lien.Id.ToString(),
+                isBulk = "Yes",
+                isServicing = "No",
+                note = "Updated flag note",
+            });
+        updateResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await updateResponse.Content.ReadAsStringAsync()}");
+
+        var updatesResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens-updates/v3",
+            new { caseId = SeedHelper.CaseId, page = 1, limit = 50 });
+        updatesResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await updatesResponse.Content.ReadAsStringAsync()}");
+
+        var body = JsonNode.Parse(await updatesResponse.Content.ReadAsStringAsync())!;
+        var description = body["data"]!.AsArray()
+            .Single(item =>
+                item!["lienId"]!.GetValue<string>() == lien.Id.ToString() &&
+                item["description"]!.GetValue<string>().StartsWith("Lien Update.", StringComparison.Ordinal))!
+            ["description"]!.GetValue<string>();
+
+        description.Should().Contain("Note: Original flag note → Updated flag note");
+        description.Should().NotContain("Bulk:");
+        description.Should().NotContain("Servicing:");
+    }
+
+    [Fact]
     public async Task UpdateMedical_when_only_note_changes_includes_note_in_lien_updates()
     {
         var note = $"Medical update note {Guid.CreateVersion7():N}";

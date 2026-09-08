@@ -620,7 +620,13 @@ public static class LienEndpoints
             tenantId,
             servicingItemService,
             ct);
-        var sorted = ApplyLienSorting(enriched, sortBy, sortDirection);
+        var amountReceivedByLienId = await GetAmountReceivedByLienIdAsync(
+            db,
+            tenantId,
+            filteredLiens,
+            sortBy,
+            ct);
+        var sorted = ApplyLienSorting(enriched, sortBy, sortDirection, amountReceivedByLienId);
         var pagedLiens = sorted
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
@@ -712,7 +718,8 @@ public static class LienEndpoints
     private static List<LienResponse> ApplyLienSorting(
         List<LienResponse> liens,
         string? sortBy,
-        string? sortDirection)
+        string? sortDirection,
+        IReadOnlyDictionary<Guid, decimal> amountReceivedByLienId)
     {
         if (liens.Count <= 1 || string.IsNullOrWhiteSpace(sortBy))
             return liens;
@@ -737,8 +744,14 @@ public static class LienEndpoints
                 ? liens.OrderByDescending(l => l.MedicalFacility ?? string.Empty, StringComparer.OrdinalIgnoreCase)
                 : liens.OrderBy(l => l.MedicalFacility ?? string.Empty, StringComparer.OrdinalIgnoreCase),
             "purchasedate" => descending
-                ? liens.OrderByDescending(l => l.IncidentDate ?? DateOnly.MinValue)
-                : liens.OrderBy(l => l.IncidentDate ?? DateOnly.MinValue),
+                ? liens.OrderByDescending(l => ParseLienPurchaseDate(l.PurchaseDate) ?? DateOnly.MinValue)
+                : liens.OrderBy(l => ParseLienPurchaseDate(l.PurchaseDate) ?? DateOnly.MinValue),
+            "isservicing" or "servicing" => descending
+                ? liens.OrderByDescending(l => IsServicingLien(l.IsServicing))
+                : liens.OrderBy(l => IsServicingLien(l.IsServicing)),
+            "amountreceived" or "payment" => descending
+                ? liens.OrderByDescending(l => GetAmountReceived(l.Id, amountReceivedByLienId))
+                : liens.OrderBy(l => GetAmountReceived(l.Id, amountReceivedByLienId)),
             "purchaseamount" or "totalpurchase" => descending
                 ? liens.OrderByDescending(l => l.TotalPurchase ?? decimal.MinValue)
                 : liens.OrderBy(l => l.TotalPurchase ?? decimal.MinValue),
@@ -763,6 +776,61 @@ public static class LienEndpoints
             .ThenBy(l => l.LienNumber, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
+
+    private static async Task<IReadOnlyDictionary<Guid, decimal>> GetAmountReceivedByLienIdAsync(
+        LiensDbContext db,
+        Guid tenantId,
+        IReadOnlyCollection<Lien> liens,
+        string? sortBy,
+        CancellationToken ct)
+    {
+        var normalizedSortBy = sortBy?.Trim()
+            .Replace("_", string.Empty, StringComparison.Ordinal)
+            .ToLowerInvariant();
+        if (normalizedSortBy is not ("amountreceived" or "payment") || liens.Count == 0)
+            return new Dictionary<Guid, decimal>();
+
+        var lienIds = liens.Select(lien => lien.Id).ToList();
+        return await db.SettlementPaymentDetails
+            .AsNoTracking()
+            .Where(payment =>
+                payment.TenantId == tenantId &&
+                lienIds.Contains(payment.LienId) &&
+                !payment.IsDeleted &&
+                payment.PostingStatus != SettlementPaymentDetail.VoidedStatus)
+            .GroupBy(payment => payment.LienId)
+            .ToDictionaryAsync(
+                group => group.Key,
+                group => group.Sum(payment => payment.Amount),
+                ct);
+    }
+
+    private static decimal GetAmountReceived(
+        Guid lienId,
+        IReadOnlyDictionary<Guid, decimal> amountReceivedByLienId)
+        => amountReceivedByLienId.GetValueOrDefault(lienId);
+
+    private static DateOnly? ParseLienPurchaseDate(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        return DateOnly.TryParseExact(
+            value,
+            "MM/dd/yyyy",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out var parsed)
+            ? parsed
+            : null;
+    }
+
+    private static bool IsServicingLien(string? value)
+        => !string.IsNullOrWhiteSpace(value) &&
+           (value.Equals("true", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("yes", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("y", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("1", StringComparison.OrdinalIgnoreCase));
 
     internal static async Task<List<AdvancedLienFilterRow>> BuildAdvancedLienFilterRowsAsync(
         LiensDbContext db,

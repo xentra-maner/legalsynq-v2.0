@@ -381,9 +381,14 @@ public class LiensDbContext : DbContext
         {
             var previousValue = entry.State == EntityState.Added ? null : entry.OriginalValues[propertyName];
             var currentValue = entry.State == EntityState.Deleted ? null : entry.CurrentValues[propertyName];
-            var valuesEqual = typeof(TEntity) == typeof(Case) && propertyName == nameof(Case.Status)
-                ? RootEntityHistoryFormatter.CaseStatusesEqual(previousValue, currentValue)
-                : RootEntityHistoryFormatter.ValuesEqual(previousValue, currentValue);
+            var valuesEqual = (typeof(TEntity), propertyName) switch
+            {
+                (var t, nameof(Case.Status)) when t == typeof(Case) =>
+                    RootEntityHistoryFormatter.CaseStatusesEqual(previousValue, currentValue),
+                (var t, nameof(Lien.IsBulk) or nameof(Lien.IsServicing)) when t == typeof(Lien) =>
+                    RootEntityHistoryFormatter.FlagValuesEqual(previousValue, currentValue),
+                _ => RootEntityHistoryFormatter.ValuesEqual(previousValue, currentValue),
+            };
             if (!valuesEqual)
             {
                 if (typeof(TEntity) == typeof(Lien) && propertyName == nameof(Lien.Status))

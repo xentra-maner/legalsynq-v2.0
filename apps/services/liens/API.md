@@ -152,6 +152,8 @@ All liens API timestamp responses are serialized in U.S. Pacific time (`-07:00` 
 | `lienType` | `string` | No | `null` | Filter by lien type |
 | `caseId` | `guid` | No | `null` | Filter by associated case ID |
 | `facilityId` | `guid` | No | `null` | Filter by facility ID |
+| `sortBy` | `string` | No | `null` | Sort field. Supports `purchaseDate`, `isServicing`, `amountReceived`, and the existing lien list sort fields. |
+| `sortDirection` | `string` | No | `asc` | Sort direction: `asc` or `desc`. |
 | `page` | `integer` | No | `1` | Page number |
 | `pageSize` | `integer` | No | `20` | Items per page |
 

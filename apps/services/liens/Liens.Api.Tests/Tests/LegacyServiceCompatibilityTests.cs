@@ -898,6 +898,48 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
     }
 
     [Fact]
+    public async Task UpdateServicingDetails_allows_law_firm_change_when_case_status_is_negotiations()
+    {
+        var oldLawFirmId = Guid.CreateVersion7();
+        var newLawFirmId = Guid.CreateVersion7();
+        Guid caseId;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-LF-NEGOTIATIONS-{Guid.CreateVersion7():N}"[..30],
+                "Negotiations",
+                "LawFirm",
+                SeedHelper.UserId,
+                notes: $"lawFirmId={oldLawFirmId}");
+            caseId = caseEntity.Id;
+            db.Cases.Add(caseEntity);
+            await db.SaveChangesAsync();
+        }
+
+        // Legacy CASE STATUS lookup exposes the code "Negotiations" (canonical: InNegotiation).
+        // The servicing screen sends that raw code alongside the law firm switch.
+        var updateResponse = await _client.PatchAsJsonAsync("/service/update-details", new
+        {
+            caseId,
+            caseStatusId = "Negotiations",
+            lawFirmId = newLawFirmId,
+        });
+        updateResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await updateResponse.Content.ReadAsStringAsync()}");
+
+        var caseResponse = await _client.GetAsync($"/api/liens/cases/{caseId}");
+        caseResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var caseBody = JsonNode.Parse(await caseResponse.Content.ReadAsStringAsync())!;
+        caseBody["lawFirmId"]!.GetValue<string>().Should().Be(newLawFirmId.ToString());
+        caseBody["status"]!.GetValue<string>().Should()
+            .BeOneOf(CaseStatus.InNegotiation, "Negotiations");
+    }
+
+    [Fact]
     public async Task Case_update_routes_record_law_firm_changes_in_servicing_history()
     {
         var oldLawFirmId = Guid.CreateVersion7();

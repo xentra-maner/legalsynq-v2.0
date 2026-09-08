@@ -570,4 +570,25 @@ static async Task EnsureLiensSchemaTablesAsync(LiensDbContext db, ILogger logger
         await cmd.ExecuteNonQueryAsync();
         logger.LogInformation("EnsureLiensSchemaTablesAsync: Added IsServicing to liens_Liens.");
     }
+
+    // LS-LIENS-OFFER-DRIFT — liens_LienOffers.SubmittedByPlatformUserId added by
+    // migration 20260906010000_AddSellingNotificationInboxOutbox. When that
+    // migration was skipped or only partially applied, every query that
+    // materializes a LienOffer (e.g. the selling lien detail endpoint) fails with
+    // a MySQL "Unknown column" error and returns 500 for all lien IDs.
+    cmd.CommandText = """
+        SELECT COUNT(*) FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME   = 'liens_LienOffers'
+          AND COLUMN_NAME  = 'SubmittedByPlatformUserId'
+        """;
+    if (Convert.ToInt64(await cmd.ExecuteScalarAsync()) == 0)
+    {
+        cmd.CommandText = """
+            ALTER TABLE `liens_LienOffers`
+                ADD COLUMN `SubmittedByPlatformUserId` char(36) NULL COLLATE ascii_general_ci
+            """;
+        await cmd.ExecuteNonQueryAsync();
+        logger.LogInformation("EnsureLiensSchemaTablesAsync: Added SubmittedByPlatformUserId to liens_LienOffers.");
+    }
 }

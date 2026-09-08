@@ -297,77 +297,34 @@ public class SellingOperationsDashboardEndpointTests : IClassFixture<LiensApiFac
     }
 
     [Fact]
-    public async Task Dashboard_labels_top_buyer_from_scoped_canonical_company()
+    public async Task Dashboard_top_buyer_reports_accepted_company_name_total_and_lien_count()
     {
         var buyerOrgId = Guid.CreateVersion7();
-        var olderBuyerCompany = Company.Create(
-            SeedHelper.TenantId,
-            SeedHelper.OrgId,
-            CompanyDirectoryReferenceData.FundingCompanyId,
-            "Older Buyer Capital",
-            SeedHelper.UserId);
-        var selectedBuyerCompany = Company.Create(
+        var buyerContactId = Guid.CreateVersion7();
+        var buyerCompany = Company.Create(
             SeedHelper.TenantId,
             SeedHelper.OrgId,
             CompanyDirectoryReferenceData.FundingCompanyId,
             "Selected Buyer Capital",
             SeedHelper.UserId);
-        var rejectedBuyerCompany = Company.Create(
-            SeedHelper.TenantId,
-            SeedHelper.OrgId,
-            CompanyDirectoryReferenceData.FundingCompanyId,
-            "Rejected Buyer Capital",
-            SeedHelper.UserId);
-        var sold = CreateLien("TOP-BUYER", new DateOnly(2026, 4, 15), 4_000m, 2_500m);
-        sold.ListForSale(3_500m, SeedHelper.UserId);
-        sold.MarkSold(3_000m, buyerOrgId, SeedHelper.UserId);
-        sold.Activate(SeedHelper.UserId);
-        var olderAcceptedOffer = LienOffer.Create(
-            SeedHelper.TenantId,
-            sold.Id,
-            buyerOrgId,
-            SeedHelper.OrgId,
-            3_000m,
-            SeedHelper.UserId);
-        olderAcceptedOffer.LinkCanonicalBuyer(olderBuyerCompany.Id);
-        olderAcceptedOffer.Accept(SeedHelper.UserId);
-        SetProperty(olderAcceptedOffer, nameof(LienOffer.RespondedAtUtc), new DateTime(2026, 4, 20, 8, 0, 0, DateTimeKind.Utc));
-        var selectedAcceptedOffer = LienOffer.Create(
-            SeedHelper.TenantId,
-            sold.Id,
-            buyerOrgId,
-            SeedHelper.OrgId,
-            3_100m,
-            SeedHelper.UserId);
-        selectedAcceptedOffer.LinkCanonicalBuyer(selectedBuyerCompany.Id);
-        selectedAcceptedOffer.Accept(SeedHelper.UserId);
-        SetProperty(selectedAcceptedOffer, nameof(LienOffer.RespondedAtUtc), new DateTime(2026, 4, 21, 8, 0, 0, DateTimeKind.Utc));
-        var rejectedOffer = LienOffer.Create(
-            SeedHelper.TenantId,
-            sold.Id,
-            buyerOrgId,
-            SeedHelper.OrgId,
-            3_200m,
-            SeedHelper.UserId);
-        rejectedOffer.LinkCanonicalBuyer(rejectedBuyerCompany.Id);
-        rejectedOffer.Reject(SeedHelper.UserId);
-        SetProperty(rejectedOffer, nameof(LienOffer.RespondedAtUtc), new DateTime(2026, 4, 22, 8, 0, 0, DateTimeKind.Utc));
+        var acceptedLienA = CreateLien("BUYER-A1", new DateOnly(2026, 4, 15), 2_500m, 2_500m);
+        var acceptedLienB = CreateLien("BUYER-A2", new DateOnly(2026, 4, 16), 1_500m, 1_500m);
 
-        var settled = CreateLien("SETTLED-PURCHASE", new DateOnly(2026, 4, 16), 2_000m, 2_000m);
-        settled.ListForSale(1_500m, SeedHelper.UserId);
-        settled.MarkSold(1_200m, buyerOrgId, SeedHelper.UserId);
-        settled.Activate(SeedHelper.UserId);
-        settled.Settle(1_100m, SeedHelper.UserId);
+        // A different buyer holds a lien but never accepted an offer -> excluded from top buyers.
+        var noOfferLien = CreateLien("NO-OFFER", new DateOnly(2026, 4, 17), 9_000m, 8_000m);
+        noOfferLien.ListForSale(7_000m, SeedHelper.UserId);
+        noOfferLien.MarkSold(6_000m, Guid.CreateVersion7(), SeedHelper.UserId);
+        noOfferLien.Activate(SeedHelper.UserId);
 
-        await SeedAsync(db => db.AddRange(
-            olderBuyerCompany,
-            selectedBuyerCompany,
-            rejectedBuyerCompany,
-            sold,
-            settled,
-            olderAcceptedOffer,
-            selectedAcceptedOffer,
-            rejectedOffer));
+        await SeedAsync(db =>
+        {
+            db.Companies.Add(buyerCompany);
+            db.Liens.AddRange(acceptedLienA, acceptedLienB, noOfferLien);
+            db.SellingBuyerAccessLinks.Add(CreateAcceptedBuyerLink(
+                acceptedLienA.Id, buyerOrgId, buyerContactId, buyerCompany.Id, 2_500m, new DateOnly(2026, 4, 29)));
+            db.SellingBuyerAccessLinks.Add(CreateAcceptedBuyerLink(
+                acceptedLienB.Id, buyerOrgId, buyerContactId, buyerCompany.Id, 1_500m, new DateOnly(2026, 4, 29)));
+        });
 
         var response = await _client.GetAsync(
             "/api/liens/selling/analytics/dashboard?startDate=2026-04-01&endDate=2026-04-30&compare=none");
@@ -376,57 +333,67 @@ public class SellingOperationsDashboardEndpointTests : IClassFixture<LiensApiFac
         body.Should().NotBeNull();
         body!.TopBuyers.Should().ContainSingle();
         body.TopBuyers[0].BuyerOrgId.Should().Be(buyerOrgId);
-        body.TopBuyers[0].BuyerCompanyId.Should().Be(selectedBuyerCompany.Id);
+        body.TopBuyers[0].BuyerCompanyId.Should().Be(buyerCompany.Id);
         body.TopBuyers[0].BuyerName.Should().Be("Selected Buyer Capital");
-        body.TopBuyers[0].ActiveLienCount.Should().Be(1);
-        body.TopBuyers[0].TotalBalance.Should().Be(2_500m);
-        body.TopBuyers[0].CompletedPurchaseAmount.Should().Be(4_200m);
+        body.TopBuyers[0].ActiveLienCount.Should().Be(2);
+        body.TopBuyers[0].TotalBalance.Should().Be(4_000m);
         body.TopBuyers[0].PercentOfTotalBalance.Should().Be(100m);
     }
 
     [Fact]
-    public async Task Dashboard_top_buyers_excludes_buyers_without_an_accepted_offer()
+    public async Task Dashboard_top_buyers_return_top_five_accepting_funding_companies_by_amount()
     {
-        var acceptedBuyerOrgId = Guid.CreateVersion7();
-        var acceptedBuyerCompany = Company.Create(
-            SeedHelper.TenantId,
-            SeedHelper.OrgId,
-            CompanyDirectoryReferenceData.FundingCompanyId,
-            "Accepted Offer Capital",
-            SeedHelper.UserId);
-        var acceptedLien = CreateLien("ACCEPTED-BUYER", new DateOnly(2026, 4, 15), 4_000m, 2_500m);
-        acceptedLien.ListForSale(3_500m, SeedHelper.UserId);
-        acceptedLien.MarkSold(3_000m, acceptedBuyerOrgId, SeedHelper.UserId);
-        acceptedLien.Activate(SeedHelper.UserId);
-        var acceptedOffer = LienOffer.Create(
-            SeedHelper.TenantId,
-            acceptedLien.Id,
-            acceptedBuyerOrgId,
-            SeedHelper.OrgId,
-            3_000m,
-            SeedHelper.UserId);
-        acceptedOffer.LinkCanonicalBuyer(acceptedBuyerCompany.Id);
-        acceptedOffer.Accept(SeedHelper.UserId);
-        SetProperty(acceptedOffer, nameof(LienOffer.RespondedAtUtc), new DateTime(2026, 4, 20, 8, 0, 0, DateTimeKind.Utc));
+        var accepted = new (string Name, decimal Amount)[]
+        {
+            ("Buyer F", 600m),
+            ("Buyer E", 500m),
+            ("Buyer D", 400m),
+            ("Buyer C", 300m),
+            ("Buyer B", 200m),
+            ("Buyer A", 100m),
+        };
+        var orgByName = new Dictionary<string, Guid>();
+        var companies = new List<Company>();
+        var liens = new List<Lien>();
+        var links = new List<SellingBuyerAccessLink>();
+        foreach (var (name, amount) in accepted)
+        {
+            var company = Company.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                CompanyDirectoryReferenceData.FundingCompanyId,
+                name,
+                SeedHelper.UserId);
+            var orgId = Guid.CreateVersion7();
+            orgByName[name] = orgId;
+            var lien = CreateLien($"TOP5-{name}", new DateOnly(2026, 4, 15), amount, amount);
+            companies.Add(company);
+            liens.Add(lien);
+            links.Add(CreateAcceptedBuyerLink(
+                lien.Id, orgId, Guid.CreateVersion7(), company.Id, amount, new DateOnly(2026, 4, 29)));
+        }
 
-        // Buyer with a larger active balance but no accepted offer must not appear.
-        var noOfferBuyerOrgId = Guid.CreateVersion7();
-        var noOfferLien = CreateLien("NO-OFFER-BUYER", new DateOnly(2026, 4, 16), 9_000m, 8_000m);
-        noOfferLien.ListForSale(7_000m, SeedHelper.UserId);
-        noOfferLien.MarkSold(6_000m, noOfferBuyerOrgId, SeedHelper.UserId);
-        noOfferLien.Activate(SeedHelper.UserId);
-
-        await SeedAsync(db => db.AddRange(acceptedBuyerCompany, acceptedLien, noOfferLien, acceptedOffer));
+        await SeedAsync(db =>
+        {
+            db.Companies.AddRange(companies);
+            db.Liens.AddRange(liens);
+            db.SellingBuyerAccessLinks.AddRange(links);
+        });
 
         var response = await _client.GetAsync(
             "/api/liens/selling/analytics/dashboard?startDate=2026-04-01&endDate=2026-04-30&compare=none");
         var body = await response.Content.ReadFromJsonAsync<SellingOperationsDashboardResponse>();
 
         body.Should().NotBeNull();
-        body!.TopBuyers.Should().ContainSingle();
-        body.TopBuyers[0].BuyerOrgId.Should().Be(acceptedBuyerOrgId);
-        body.TopBuyers[0].BuyerName.Should().Be("Accepted Offer Capital");
-        body.TopBuyers[0].PercentOfTotalBalance.Should().Be(100m);
+        body!.TopBuyers.Should().HaveCount(5);
+        body.TopBuyers.Select(buyer => buyer.BuyerName)
+            .Should().ContainInOrder("Buyer F", "Buyer E", "Buyer D", "Buyer C", "Buyer B");
+        body.TopBuyers.Should().NotContain(buyer => buyer.BuyerName == "Buyer A");
+        body.TopBuyers[0].BuyerOrgId.Should().Be(orgByName["Buyer F"]);
+        body.TopBuyers[0].TotalBalance.Should().Be(600m);
+        body.TopBuyers[0].ActiveLienCount.Should().Be(1);
+        // Percent is measured against the full accepted pool (2,100), not just the top five.
+        body.TopBuyers[0].PercentOfTotalBalance.Should().Be(28.57m);
     }
 
     [Theory]

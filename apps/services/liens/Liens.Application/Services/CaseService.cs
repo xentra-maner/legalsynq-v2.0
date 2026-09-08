@@ -700,6 +700,16 @@ public sealed class CaseService : ICaseService
             entity.Id,
             ct);
 
+        // The UI renders the settlement status as a "<lienStatus>-<settlementStatus>" suffix, so a
+        // settlement status that just repeats the lien-status rollup (e.g. both "Closed") produces a
+        // redundant "Closed-Closed" chip. Suppress it in that case.
+        if (!string.IsNullOrEmpty(settlementStatus) &&
+            string.Equals(settlementStatus, lienStatus, StringComparison.OrdinalIgnoreCase))
+        {
+            settlementStatus = string.Empty;
+            settlementStatusId = string.Empty;
+        }
+
         return MapToResponse(
             entity,
             lawFirm: lawFirm,

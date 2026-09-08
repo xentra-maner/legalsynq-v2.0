@@ -200,7 +200,7 @@ export function LiensTab({
       ),
     },
     {
-      id: "serviceDate",
+      id: "initialServiceDate",
       header: "Initial Service Date",
       accessorKey: "initialServiceDate",
       cell: ({ row }) => (

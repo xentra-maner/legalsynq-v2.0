@@ -230,9 +230,9 @@ export function LiensTab({
       ),
     },
     {
-      id: "originalAmount",
+      id: "totalBilling",
       header: "Billing Amount",
-      accessorKey: "originalAmount",
+      accessorKey: "totalBilling",
       cell: ({ row }) => (
         <span className="text-sm text-gray-600  font-medium tabular-nums">
           {formatCurrency(row.original.originalAmount)}
@@ -253,9 +253,9 @@ export function LiensTab({
       ),
     },
     {
-      id: "payment",
+      id: "amountReceived",
       header: "Amount Received",
-      accessorKey: "payment",
+      accessorKey: "amountReceived",
 
       cell: ({ row }) => (
         <span className="text-sm text-gray-700 tabular-nums">

@@ -21,6 +21,7 @@ export function LienListSection<TLien>({
   activeFilterCount = 0,
   sorting,
   onSortingChange,
+  isLoading,
 }: {
   search: string;
   onSearchChange: (v: string) => void;
@@ -37,6 +38,7 @@ export function LienListSection<TLien>({
   activeFilterCount?: number;
   sorting: SortingState;
   onSortingChange?: (sorting: any) => void;
+  isLoading?: boolean;
 }) {
   return (
     <CollapsibleSection title="Liens" icon="ri-stack-line">
@@ -93,6 +95,7 @@ export function LienListSection<TLien>({
             manualSorting
             onSortingChange={onSortingChange}
             sorting={sorting}
+            isLoading={isLoading}
             footerCells={[
               {
                 content: `Totals (${filtered.length} lien${filtered.length !== 1 ? "s" : ""})`,
